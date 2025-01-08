@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "TradingExpertAdvisor": {
+      "commandName": "Project",
+      "commandLineArgs": "test"
+    }
+  }
+}

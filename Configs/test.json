@@ -1,0 +1,30 @@
+{
+  "AppConfig": {
+    "Apis": [
+      {
+        "Api": "Bybit_Spot",
+        "ApiKey": "",
+        "ApiSecret": ""
+      }
+    ],
+
+    "CandleTransformer": {
+      "Symbols": [ "BTCUSDT" ],
+      "Timeframes": [ 5, 15, 30, 60 ]
+    },
+
+    "CandleEvaluator": {
+      //"TimeframeThresholds": { // MTF (multi-timeframe) analysis
+      //  "1": 3,
+      //  "5": 3
+      //}
+    },
+
+    "TradeProcessorSimulator": {
+      "Symbols": [ "BTCUSDT" ],
+      "TakeProfitAmount": 50,
+      "StopLossAmount": 100,
+      "ActiveTradeThreshold": 1
+    }
+  }
+}
