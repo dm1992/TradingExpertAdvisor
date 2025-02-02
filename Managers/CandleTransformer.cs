@@ -19,7 +19,7 @@ namespace TradingExpertAdvisor.Managers
         private readonly CandleTransformerOption _option;
 
         private bool _isInitialized;
-        private Dictionary<string, Dictionary<int, InternalCandle>> _candles;
+        private Dictionary<string, Dictionary<int, InternalCandle>> _timeframeCandles;
 
         public CandleTransformer(ILoggerFactory loggerFactory,
                                 IApiClient apiClient,
@@ -30,7 +30,7 @@ namespace TradingExpertAdvisor.Managers
             _option = option;
 
             _isInitialized = false;
-            _candles = new Dictionary<string, Dictionary<int, InternalCandle>>();
+            _timeframeCandles = new Dictionary<string, Dictionary<int, InternalCandle>>();
         }
 
 
@@ -40,7 +40,7 @@ namespace TradingExpertAdvisor.Managers
             {
                 if (_isInitialized) return true;
 
-                _logger.LogInformation($"Initializing...");
+                _logger.LogInformation($"Initializing with options '{_option.Dump()}'...");
 
                 if (!_apiClient.StartCandleReceiverAsync(_option.Symbols, _option.Timeframes).Result)
                     return false;
@@ -67,10 +67,10 @@ namespace TradingExpertAdvisor.Managers
 
         private bool AreCandlesReady(string symbol)
         {
-            if (!_candles.TryGetValue(symbol, out Dictionary<int, InternalCandle> candles))
+            if (!_timeframeCandles.TryGetValue(symbol, out Dictionary<int, InternalCandle> timeframeCandles))
                 return false;
 
-            return candles.Keys.Count == _option.Timeframes.Count;
+            return timeframeCandles.Keys.Count == _option.Timeframes.Count;
         }
 
         private void CandleReceivedEventHandler(object? sender, CandleReceivedEventArgs e)
@@ -112,105 +112,95 @@ namespace TradingExpertAdvisor.Managers
 
         private void InvokeCandleTransformedEvent(InternalCandle candle)
         {
+            _logger.LogDebug($"Invoking candle transformed event with '{candle.Symbol}_{candle.Timeframe}' candle. ");
+
             this.CandleTransformedEventHandler?.Invoke(this, new CandleTransformedEventArgs(candle));
         }
 
         private void HandleReceivedCandle(InternalCandle candle)
         {
-            try
+            lock (_timeframeCandles)
             {
-                lock (_candles)
+                try
                 {
-                    if (!_candles.TryGetValue(candle.Symbol, out Dictionary<int, InternalCandle> dict))
+                    if (!_timeframeCandles.TryGetValue(candle.Symbol, out Dictionary<int, InternalCandle> timeframeCandle))
                     {
-                        _logger.LogDebug($"Saving first '{candle.Symbol}_{candle.Timeframe}' candle.");
+                        _logger.LogDebug($"Received new '{candle.Symbol}_{candle.Timeframe}' candle.");
 
-                        dict = new Dictionary<int, InternalCandle>();
-                        dict.Add(candle.Timeframe, candle);
+                        timeframeCandle = new Dictionary<int, InternalCandle>();
+                        timeframeCandle.Add(candle.Timeframe, candle);
 
-                        _candles.Add(candle.Symbol, dict);
+                        _timeframeCandles.Add(candle.Symbol, timeframeCandle);
                     }
-                    else if (!dict.TryGetValue(candle.Timeframe, out InternalCandle pendingCandle))
+                    else if (!timeframeCandle.TryGetValue(candle.Timeframe, out InternalCandle transformedCandle))
                     {
-                        _logger.LogDebug($"Saving first '{candle.Symbol}_{candle.Timeframe}' candle.");
+                        _logger.LogDebug($"Received new '{candle.Symbol}_{candle.Timeframe}' candle.");
 
-                        dict.Add(candle.Timeframe, candle);
+                        timeframeCandle.Add(candle.Timeframe, candle);
                     }
                     else if (candle.IsClosed)
                     {
-                        _logger.LogDebug($"Closing pending '{pendingCandle.Symbol}_{pendingCandle.Timeframe}' candle.");
+                        _logger.LogDebug($"Closing '{transformedCandle.Symbol}_{transformedCandle.Timeframe}' candle.");
 
-                        pendingCandle.IsClosed = true;
+                        InvokeCandleTransformedEvent(transformedCandle);
 
-                        InvokeCandleTransformedEvent(pendingCandle);
-                    }
-                    else
-                    {
-                        _logger.LogDebug($"Using '{candle.Symbol}_{candle.Timeframe}' candle as new pending candle.");
-
-                        pendingCandle = candle;
+                        timeframeCandle.Remove(transformedCandle.Timeframe);
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to handle received candle.");
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to handle received candle.");
+                }
             }
         }
 
         private void SaveTradesToCandle(List<InternalTrade> trades)
         {
-            try
+            lock (_timeframeCandles)
             {
-                lock (_candles)
+                try
                 {
                     string symbol = trades.First().Symbol;
 
                     if (!AreCandlesReady(symbol))
                         return;
 
-                    if (!_candles.TryGetValue(symbol, out Dictionary<int, InternalCandle> dict))
+                    if (!_timeframeCandles.TryGetValue(symbol, out Dictionary<int, InternalCandle> timeframeCandles))
                         return;
 
-                    foreach (var dictItem in dict)
+                    foreach (var timeframeCandle in timeframeCandles)
                     {
-                        if (!dictItem.Value.IsClosed)
-                        {
-                            dictItem.Value.Trades.AddRange(trades);
-                        }
+                        timeframeCandle.Value.Trades.AddRange(trades);
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed save trades to candle.");
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed save trades to candle.");
+                }
             }
         }
 
         private void SaveOrderbookToCandle(InternalOrderbook orderbook)
         {
-            try
+            lock (_timeframeCandles)
             {
-                lock (_candles)
+                try
                 {
                     if (!AreCandlesReady(orderbook.Symbol))
                         return;
 
-                    if (!_candles.TryGetValue(orderbook.Symbol, out Dictionary<int, InternalCandle> dict))
+                    if (!_timeframeCandles.TryGetValue(orderbook.Symbol, out Dictionary<int, InternalCandle> timeframeCandles))
                         return;
 
-                    foreach (var dictItem in dict)
+                    foreach (var timeframeCandle in timeframeCandles)
                     {
-                        if (!dictItem.Value.IsClosed)
-                        {
-                            dictItem.Value.Orderbook = orderbook;
-                        }
+                        timeframeCandle.Value.Orderbook = orderbook;
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed save orderbook to candle.");
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed save orderbook to candle.");
+                }
             }
         }
     }

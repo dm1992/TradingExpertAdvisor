@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CryptoExchange.Net.CommonObjects;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,12 +14,27 @@ namespace TradingExpertAdvisor.Models
         public List<InternalAsk> Asks { get; set; }
         public List<InternalBid> Bids { get; set; }
 
+        public InternalOrderbook()
+        {
+            this.Timestamp = DateTime.Now;
+        }
+
         public InternalOrderbook(string symbol, List<InternalAsk> asks, List<InternalBid> bids)
         {
             this.Timestamp = DateTime.Now;
             this.Symbol = symbol;
             this.Asks = asks;
             this.Bids = bids;
+        }
+
+        public InternalOrderbook DeepCopy()
+        {
+            return new InternalOrderbook()
+            {
+                Symbol = this.Symbol,
+                Asks = this.Asks.Select(o => new InternalAsk(o.Price, o.Quantity)).ToList(),
+                Bids = this.Bids.Select(o => new InternalBid(o.Price, o.Quantity)).ToList()
+            };
         }
     }
 

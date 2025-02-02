@@ -10,21 +10,18 @@
 
     "CandleTransformer": {
       "Symbols": [ "BTCUSDT" ],
-      "Timeframes": [ 5, 15, 30, 60 ]
+      "Timeframes": [ 1, 5, 15, 30, 60 ] //xxx ignore 1min
     },
 
-    "CandleEvaluator": {
-      //"TimeframeThresholds": { // MTF (multi-timeframe) analysis
-      //  "1": 3,
-      //  "5": 3
-      //}
+    "CandleEvaluator": { 
+      "Timeframes": [ 15, 60 ]
     },
 
     "TradeProcessorSimulator": {
       "Symbols": [ "BTCUSDT" ],
       "TakeProfitAmount": 50,
       "StopLossAmount": 100,
-      "ActiveTradeThreshold": 1
+      "ActiveTradesLimit": 1
     }
   }
 }

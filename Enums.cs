@@ -24,7 +24,7 @@ namespace TradingExpertAdvisor
         Bybit_Spot = 1
     }
 
-    public enum InternalCandleDirectionType
+    public enum InternalCandleDirection
     {
         Unknown = 0,
         Expected_Up = 1,
@@ -33,10 +33,34 @@ namespace TradingExpertAdvisor
         Not_Expected_Down = 4
     }
 
-    public enum MarketDirectionType
+    public enum MarketDirection
     {
         Unknown = 0,
         Up = 1,
         Down = 2
+    }
+
+    public enum CandleMetric
+    { 
+        Unknown = 0,
+        ActiveTotalVolume = 1,
+        ActiveBuyVolume = 2,
+        ActiveSellVolume = 3,
+        PassiveBuyVolume = 4,
+        PassiveSellVolume = 5,
+        ClosePrice = 6
+    }
+
+    public enum CandleMetricOperation
+    {
+        Unknown = 0,
+        AboveAverage = 1,
+        BelowAverage = 2,
+        AboveMedian = 3,
+        BelowMedian = 4,
+        MaxAverageDeviation = 5,
+        MinAverageDeviation = 6,
+        MaxMedianDeviation = 7,
+        MinMedianDeviation = 8
     }
 }

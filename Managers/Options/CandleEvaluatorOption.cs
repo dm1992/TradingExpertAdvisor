@@ -8,6 +8,11 @@ namespace TradingExpertAdvisor.Managers.Options
 {
     public class CandleEvaluatorOption
     {
-        public Dictionary<int, int> TimeframeThresholds { get; set; }
+        public List<int> Timeframes { get; set; }
+
+        public string Dump()
+        {
+            return $"Timeframes: '{String.Join(", ", this.Timeframes)}'";
+        }
     }
 }

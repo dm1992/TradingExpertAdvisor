@@ -1,23 +1,20 @@
-﻿using Bybit.Net;
-using CryptoCom.Net.Enums;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NLog.Extensions.Logging;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using TradingExpertAdvisor;
 using TradingExpertAdvisor.Apis.Options;
 using TradingExpertAdvisor.Interfaces;
 using TradingExpertAdvisor.Managers;
 using TradingExpertAdvisor.Managers.Options;
-using TradingExpertAdvisor.Models;
 
 ILoggerFactory _loggerFactory = null;
 ILogger _logger = null;
-ManualResetEvent _exitProgram = new ManualResetEvent(false);
 
 try
 {
+    ManualResetEvent stopApplication = new ManualResetEvent(false);
+
     _loggerFactory = LoggerFactory.Create(builder =>
     {
         builder.ClearProviders();
@@ -80,7 +77,7 @@ try
         }
     }
 
-    _exitProgram.WaitOne();
+    stopApplication.WaitOne();
 }
 catch (Exception ex)
 {

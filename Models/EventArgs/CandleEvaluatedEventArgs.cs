@@ -8,9 +8,9 @@ namespace TradingExpertAdvisor.Models.EventArgs
 {
     public class CandleEvaluatedEventArgs : BaseEventArgs
     {
-        public MarketDirectionType DirectionType { get; set; }
+        public MarketDirection DirectionType { get; set; }
 
-        public CandleEvaluatedEventArgs(MarketDirectionType directionType)
+        public CandleEvaluatedEventArgs(MarketDirection directionType)
         {
             this.DirectionType = directionType;
         }

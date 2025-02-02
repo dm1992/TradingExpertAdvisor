@@ -10,6 +10,6 @@ namespace TradingExpertAdvisor.Managers.Options
     {
         public decimal TakeProfitAmount { get; set; }
         public decimal StopLossAmount { get; set; }
-        public int ActiveTradeThreshold { get; set; }
+        public int ActiveTradesLimit { get; set; }
     }
 }

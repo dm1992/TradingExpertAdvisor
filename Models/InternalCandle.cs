@@ -12,16 +12,108 @@ namespace TradingExpertAdvisor.Models
     /// </summary>
     public class InternalCandle
     {
+        public int Position { get; set; }
         public string Symbol { get; set; }
         public int Timeframe { get; set; }
         public DateTime StartTime { get; set; }
         public DateTime CloseTime { get; set; }
         public bool IsClosed { get; set; }
-        public InternalCandleDirectionType DirectionType { get { return GetDirectionType(); } }
         public List<InternalTrade> Trades { get; set; } = new List<InternalTrade>();
         public InternalOrderbook Orderbook { get; set; }
+        public decimal ActiveTotalVolume { get { return GetActiveTotalVolume(); } }
+        public decimal ActiveBuyVolume { get {  return GetActiveBuyVolume(); } }
+        public decimal ActiveSellVolume { get { return GetActiveSellVolume(); } }
+        public decimal ActiveBuyVolumePercentage { get { return GetActiveBuyVolumePercentage(); } }
+        public decimal ActiveSellVolumePercentage { get { return GetActiveSellVolumePercentage(); } }
+        public decimal PassiveBuyVolumePercentage { get { return GetPassiveBuyVolumePercentage(); } }
+        public decimal PassiveSellVolumePercentage { get { return GetPassiveSellVolumePercentage(); } }
+        public decimal OpenPrice { get { return GetOpenPrice(); } }
+        public decimal HighPrice { get { return GetHighPrice(); } }
+        public decimal LowPrice { get { return GetLowPrice(); } }
+        public decimal ClosePrice { get { return GetClosePrice(); } }
+        public decimal DeltaPrice { get { return GetDeltaPrice(); } }
+        public InternalCandleDirection DirectionType { get { return GetDirectionType(); } }
 
-        public decimal GetActiveBuyVolumePercentage()
+        public string Dump()
+        {
+            return $"\n-------------------------------------------------------------CANDLE INFO-------------------------------------------------------------\n" +
+                   $"----- {this.Symbol} / {this.Timeframe}min / StartTime {this.StartTime} / CloseTime {this.CloseTime} / Trades: {this.Trades.Count} -----\n" +
+                   $"--------------------------------------------------------------ACTIVE VOLUME------------------------------------------------------------\n" +
+                   $"ABV: {this.ActiveBuyVolume} ({this.ActiveBuyVolumePercentage}%), ASV: {this.ActiveSellVolume} ({this.ActiveSellVolumePercentage}%), TAV: {this.ActiveTotalVolume}\n" +
+                   $"--------------------------------------------------------------PASSIVE VOLUME-----------------------------------------------------------\n" +
+                   $"PBV_5: {this.GetPassiveBuyVolumePercentage(orderbookDepth: 5)}%, PSV_5: {this.GetPassiveSellVolumePercentage(orderbookDepth: 5)}%\n" +
+                   $"PBV_10: {this.GetPassiveBuyVolumePercentage(orderbookDepth: 10)}%, PSV_10: {this.GetPassiveSellVolumePercentage(orderbookDepth: 10)}%\n" +
+                   $"PBV_20: {this.GetPassiveBuyVolumePercentage(orderbookDepth: 20)}%, PSV_20: {this.GetPassiveSellVolumePercentage(orderbookDepth: 20)}%\n" +
+                   $"PBV_30: {this.GetPassiveBuyVolumePercentage(orderbookDepth: 30)}%, PSV_30: {this.GetPassiveSellVolumePercentage(orderbookDepth: 30)}%\n" +
+                   $"PBV_40: {this.GetPassiveBuyVolumePercentage(orderbookDepth: 40)}%, PSV_40: {this.GetPassiveSellVolumePercentage(orderbookDepth: 40)}%\n" +
+                   $"PBV_50: {this.GetPassiveBuyVolumePercentage(orderbookDepth: 50)}%, PSV_50: {this.GetPassiveSellVolumePercentage(orderbookDepth: 50)}%\n" +
+                   $"-----------------------------------------------------------------PRICE-----------------------------------------------------------------\n" +
+                   $"O: {this.OpenPrice} H: {this.HighPrice}, L: {this.LowPrice}, C: {this.ClosePrice}, Delta: {this.DeltaPrice}\n" +
+                   $"---------------------------------------------------------------PREDICTION--------------------------------------------------------------\n" +
+                   $"DIRECTION: {this.DirectionType}\n" +
+                   $"---------------------------------------------------------------------------------------------------------------------------------------\n";
+        }
+
+
+        #region Market metric calculations
+
+        private InternalCandleDirection GetDirectionType()
+        {
+            decimal activeBuyVolumePercentage = this.GetActiveBuyVolumePercentage();
+            decimal activeSellVolumePercentage = this.GetActiveSellVolumePercentage();
+            decimal deltaPrice = this.GetDeltaPrice();
+
+            if (activeBuyVolumePercentage > activeSellVolumePercentage)
+            {
+                if (deltaPrice > 0)
+                {
+                    return InternalCandleDirection.Expected_Up;
+                }
+                else if (deltaPrice < 0)
+                {
+                    return InternalCandleDirection.Not_Expected_Down;
+                }
+            }
+            else if (activeSellVolumePercentage > activeBuyVolumePercentage)
+            {
+                if (deltaPrice < 0)
+                {
+                    return InternalCandleDirection.Expected_Down;
+                }
+                else if (deltaPrice > 0)
+                {
+                    return InternalCandleDirection.Not_Expected_Up;
+                }
+            }
+
+            return InternalCandleDirection.Unknown;
+        }
+
+        private decimal GetActiveBuyVolume()
+        {
+            if (this.Trades.IsNullOrEmpty())
+                return 0;
+
+            return this.Trades.Where(x => x.TradeDirection == TradeDirection.Buy).Sum(x => x.Volume);
+        }
+
+        private decimal GetActiveSellVolume()
+        {
+            if (this.Trades.IsNullOrEmpty())
+                return 0;
+
+            return this.Trades.Where(x => x.TradeDirection == TradeDirection.Sell).Sum(x => x.Volume);
+        }
+
+        private decimal GetActiveTotalVolume()
+        {
+            if (this.Trades.IsNullOrEmpty())
+                return 0;
+
+            return this.Trades.Sum(x => x.Volume);
+        }
+
+        private decimal GetActiveBuyVolumePercentage()
         {
             if (this.Trades.IsNullOrEmpty())
                 return 0;
@@ -32,7 +124,7 @@ namespace TradingExpertAdvisor.Models
             return Math.Round((buyVolume / totalVolume) * 100.0m, 2);
         }
 
-        public decimal GetActiveSellVolumePercentage()
+        private decimal GetActiveSellVolumePercentage()
         {
             if (this.Trades.IsNullOrEmpty())
                 return 0;
@@ -43,7 +135,7 @@ namespace TradingExpertAdvisor.Models
             return Math.Round((sellVolume / totalVolume) * 100.0m, 2);
         }
 
-        public decimal GetPassiveBuyVolumePercentage(int orderbookDepth = 5)
+        private decimal GetPassiveBuyVolumePercentage(int orderbookDepth = 5)
         {
             if (this.Orderbook == null)
                 return 0;
@@ -54,7 +146,7 @@ namespace TradingExpertAdvisor.Models
             return Math.Round((bidVolume / (askVolume + bidVolume)) * 100, 2);
         }
 
-        public decimal GetPassiveSellVolumePercentage(int orderbookDepth = 5)
+        private decimal GetPassiveSellVolumePercentage(int orderbookDepth = 5)
         {
             if (this.Orderbook == null)
                 return 0;
@@ -65,7 +157,7 @@ namespace TradingExpertAdvisor.Models
             return Math.Round((askVolume / (askVolume + bidVolume)) * 100, 2);
         }
 
-        public decimal GetOpenPrice()
+        private decimal GetOpenPrice()
         {
             if (this.Trades.IsNullOrEmpty())
                 return 0;
@@ -73,7 +165,7 @@ namespace TradingExpertAdvisor.Models
             return this.Trades.First().Price;
         }
 
-        public decimal GetHighPrice()
+        private decimal GetHighPrice()
         {
             if (this.Trades.IsNullOrEmpty())
                 return 0;
@@ -81,7 +173,7 @@ namespace TradingExpertAdvisor.Models
             return this.Trades.Max(x => x.Price);
         }
 
-        public decimal GetLowPrice()
+        private decimal GetLowPrice()
         {
             if (this.Trades.IsNullOrEmpty())
                 return 0;
@@ -89,7 +181,7 @@ namespace TradingExpertAdvisor.Models
             return this.Trades.Min(x => x.Price);
         }
 
-        public decimal GetClosePrice()
+        private decimal GetClosePrice()
         {
             if (this.Trades.IsNullOrEmpty())
                 return 0;
@@ -97,7 +189,7 @@ namespace TradingExpertAdvisor.Models
             return this.Trades.Last().Price;
         }
 
-        public decimal GetDeltaPrice()
+        private decimal GetDeltaPrice()
         {
             if (this.Trades.IsNullOrEmpty())
                 return 0;
@@ -105,70 +197,6 @@ namespace TradingExpertAdvisor.Models
             return this.GetClosePrice() - this.GetOpenPrice();
         }
 
-        public InternalCandleDirectionType GetDirectionType()
-        {
-            decimal activeBuyVolumePercentage = this.GetActiveBuyVolumePercentage();
-            decimal activeSellVolumePercentage = this.GetActiveSellVolumePercentage();
-            decimal deltaPrice = this.GetDeltaPrice();
-
-            if (activeBuyVolumePercentage > activeSellVolumePercentage)
-            {
-                if (deltaPrice > 0)
-                {
-                    return InternalCandleDirectionType.Expected_Up;
-                }
-                else if (deltaPrice < 0)
-                {
-                    return InternalCandleDirectionType.Not_Expected_Down;
-                }
-            }
-            else if (activeSellVolumePercentage > activeBuyVolumePercentage)
-            {
-                if (deltaPrice < 0)
-                {
-                    return InternalCandleDirectionType.Expected_Down;
-                }
-                else if (deltaPrice > 0)
-                {
-                    return InternalCandleDirectionType.Not_Expected_Up;
-                }
-            }
-
-            return InternalCandleDirectionType.Unknown;
-        }
-
-        public string DumpOrderbookItems(int orderbookDepth = 5)
-        {
-            if (this.Orderbook == null)
-                return null;
-
-            string dump = null;
-
-            if (!this.Orderbook.Asks.IsNullOrEmpty())
-            {
-                dump += $"Asks: ({String.Join(",", this.Orderbook.Asks.Take(orderbookDepth).Select(x => x.Dump()))})";
-            }
-            else if (!this.Orderbook.Bids.IsNullOrEmpty())
-            {
-                if (!dump.IsNullOrEmpty())
-                {
-                    dump += Environment.NewLine;
-                }
-
-                dump += $"Bids: ({String.Join(",", this.Orderbook.Bids.Take(orderbookDepth).Select(x => x.Dump()))})";
-            }
-
-            return dump;
-        }
-
-        public string Dump()
-        {
-            return $"----- {this.Symbol} / {this.Timeframe}min / StartTime {this.StartTime} / CloseTime {this.CloseTime} / Trades: {this.Trades.Count} -----\n" +
-                   $"ABV%: {this.GetActiveBuyVolumePercentage()}, ASV%: {this.GetActiveSellVolumePercentage()}\n" +
-                   $"PBV_5%: {this.GetPassiveBuyVolumePercentage()}, PSV_5%: {this.GetPassiveSellVolumePercentage()}, PBV_10%: {this.GetPassiveBuyVolumePercentage(orderbookDepth: 10)}, PSV_10%: {this.GetPassiveSellVolumePercentage(orderbookDepth: 10)}\n" +
-                   $"{this.DumpOrderbookItems()}\n" +
-                   $"O: {this.GetOpenPrice()} H: {this.GetHighPrice()}, L: {this.GetLowPrice()}, C: {this.GetClosePrice()}, Delta: {this.GetDeltaPrice()}\n" +
-                   $"Direction: {this.GetDirectionType()}";
-        }
+        #endregion
     }
 }

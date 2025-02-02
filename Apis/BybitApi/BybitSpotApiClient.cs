@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using TradingExpertAdvisor.Apis.Options;
 using System.Diagnostics;
 using CryptoExchange.Net.CommonObjects;
+using Newtonsoft.Json;
 
 namespace TradingExpertAdvisor.Apis.BybitApi
 {
@@ -27,7 +28,8 @@ namespace TradingExpertAdvisor.Apis.BybitApi
         private Dictionary<string, InternalOrderbook> _orderbooks;
         private Dictionary<string, decimal> _prices;
 
-        public BybitSpotApiClient(ILoggerFactory loggerFactory, string apiKey, string apiSecret, BybitEnvironment environment) : base(apiKey, apiSecret, environment)
+        public BybitSpotApiClient(ILoggerFactory loggerFactory, string apiKey, string apiSecret, BybitEnvironment environment) 
+        : base(apiKey, apiSecret, environment)
         {
             _logger = loggerFactory.CreateLogger<BybitSpotApiClient>();
 
@@ -254,7 +256,7 @@ namespace TradingExpertAdvisor.Apis.BybitApi
                     _orderbooks.Add(orderbook.Symbol, localOrderbook);
                 }
 
-                InvokeOrderbookReceivedEvent(localOrderbook);
+                InvokeOrderbookReceivedEvent(localOrderbook.DeepCopy()); // copy instance NOT original instance
             }
             catch (Exception ex)
             {

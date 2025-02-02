@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using CryptoCom.Net.Enums;
+using CryptoExchange.Net.CommonObjects;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,6 +13,7 @@ using TradingExpertAdvisor.Interfaces;
 using TradingExpertAdvisor.Managers.Options;
 using TradingExpertAdvisor.Models;
 using TradingExpertAdvisor.Models.EventArgs;
+using XT.Net.Objects.Models;
 
 namespace TradingExpertAdvisor.Managers
 {
@@ -23,10 +26,9 @@ namespace TradingExpertAdvisor.Managers
         private readonly CandleEvaluatorOption _option;
 
         private bool _isInitialized;
-        private Dictionary<string, Dictionary<int, List<InternalCandle>>> _candles;
-        //private List<CandleEvaluationResult> _candleEvaluationResults;    
+        private Dictionary<string, Dictionary<int, List<InternalCandle>>> _timeframeCandles;
 
-        public CandleEvaluator(ILoggerFactory loggerFactory, 
+        public CandleEvaluator(ILoggerFactory loggerFactory,
                                ICandleTransformer candleTransformer,
                                CandleEvaluatorOption option)
         {
@@ -35,8 +37,7 @@ namespace TradingExpertAdvisor.Managers
             _option = option;
 
             _isInitialized = false;
-            _candles = new Dictionary<string, Dictionary<int, List<InternalCandle>>>();
-            //_candleEvaluationResults = new List<CandleEvaluationResult>();
+            _timeframeCandles = new Dictionary<string, Dictionary<int, List<InternalCandle>>>();
         }
 
 
@@ -46,7 +47,7 @@ namespace TradingExpertAdvisor.Managers
             {
                 if (_isInitialized) return true;
 
-                _logger.LogInformation($"Initializing...");
+                _logger.LogInformation($"Initializing with options '{_option.Dump()}'...");
 
                 _candleTransformer.CandleTransformedEventHandler += CandleTransformedEventHandler;
 
@@ -61,67 +62,119 @@ namespace TradingExpertAdvisor.Managers
 
         private void CandleTransformedEventHandler(object? sender, CandleTransformedEventArgs e)
         {
-            //xxx when max timeframe candle transformed received, dump all of previously received candles to log!
-            HandleCandle(e.Candle);
+            SaveCandle(e.Candle);
+
+            ExecuteCandleEvaluation(e.Candle.Symbol, e.Candle.Timeframe);
         }
 
-        private void HandleCandle(InternalCandle candle)
+        private void SaveCandle(InternalCandle candle)
         {
-            lock (_candles)
+            lock (_timeframeCandles)
             {
-                if (!_candles.TryGetValue(candle.Symbol, out Dictionary<int, List<InternalCandle>> dict))
+                try
                 {
-                    dict = new Dictionary<int, List<InternalCandle>>();
-                    dict.Add(candle.Timeframe, new List<InternalCandle>() { candle });
+                    _logger.LogDebug($"Saving '{candle.Symbol}_{candle.Timeframe}' candle " +
+                                     $"with price O = '{candle.OpenPrice}', H = '{candle.HighPrice}', L = '{candle.LowPrice}', C = '{candle.ClosePrice}'.");
 
-                    _candles.Add(candle.Symbol, dict);
+                    if (!_timeframeCandles.TryGetValue(candle.Symbol, out Dictionary<int, List<InternalCandle>> timeframeCandles))
+                    {
+                        timeframeCandles = new Dictionary<int, List<InternalCandle>>();
+                        timeframeCandles.Add(candle.Timeframe, new List<InternalCandle>() { candle });
+
+                        _timeframeCandles.Add(candle.Symbol, timeframeCandles);
+                    }
+                    else if (!timeframeCandles.TryGetValue(candle.Timeframe, out List<InternalCandle> candles))
+                    {
+                        timeframeCandles.Add(candle.Timeframe, new List<InternalCandle>() { candle });
+                    }
+                    else
+                    {
+                        candles.Add(candle); //xxx when to remove them, if any?
+                    }
                 }
-                else if (!dict.TryGetValue(candle.Timeframe, out List<InternalCandle> candles))
+                catch (Exception ex)
                 {
-                    dict.Add(candle.Timeframe, new List<InternalCandle>() { candle });
-                }
-                else
-                {
-                    candles.Add(candle);
+                    _logger.LogError(ex, "Failed to save candle.");
                 }
             }
         }
 
-        //private void EvaluateMarket(string symbol, int timeframe)
-        //{
-        //    if (!_candles.TryGetValue(symbol, out Dictionary<int, List<InternalCandle>> dict))
-        //    {
-        //        _logger.LogError($"Failed to get '{symbol}' candle buffer.");
-        //        return;
-        //    }
+        private void SetCandlesPosition(List<InternalCandle> candles)
+        {
+            if (candles.IsNullOrEmpty())
+                return;
 
-        //    if (!dict.TryGetValue(timeframe, out List<InternalCandle> candles))
-        //    {
-        //        _logger.LogError($"Failed to get '{symbol}_{timeframe}' candle.");
-        //        return;
-        //    }
+            for (int i = 0; i < candles.Count(); i++)
+            {
+                candles[i].Position = i + 1;
+            }
+        }
 
-        //    if (!_option.TimeframeThresholds.TryGetValue(timeframe, out int threshold))
-        //    {
-        //        _logger.LogError($"Failed to get '{symbol}_{timeframe}' threshold value.");
-        //        return;
-        //    }
+        private void ExecuteCandleEvaluation(string symbol, int timeframe)
+        {
+            lock (_timeframeCandles)
+            {
+                try
+                {
+                    if (!_option.Timeframes.Contains(timeframe))
+                    {
+                        _logger.LogWarning($"Not allowed to execute '{symbol}_{timeframe}' candle evaluation.");
+                        return;
+                    }
 
-        //    if (candles.Count() % threshold == 0)
-        //    {
-        //        _logger.LogInformation($"'{symbol}_{timeframe}' threshold of '{threshold}' candles reached. Evaluating market...");
+                    _logger.LogDebug($">>>>> EXECUTING '{symbol}_{timeframe}' CANDLE EVALUATION <<<<<");
 
-        //        CandleEvaluationResult result = new CandleEvaluationResult(symbol, timeframe, new List<InternalCandle>(candles));
+                    if (!_timeframeCandles.TryGetValue(symbol, out Dictionary<int, List<InternalCandle>> timeframeCandles) || timeframeCandles.IsNullOrEmpty())
+                    {
+                        _logger.LogWarning($"No '{symbol}' candles.");
+                        return;
+                    }
 
-        //        _candleEvaluationResults.Add(result);
+                    CandleMetricEvaluation candleEvaluation = new CandleMetricEvaluation();
 
-        //        _logger.LogInformation(result.DumpBase());
+                    foreach (var timeframeCandlesKvp in timeframeCandles.OrderBy(x => x.Key))
+                    {
+                        if (timeframe < timeframeCandlesKvp.Key)
+                        {
+                            _logger.LogWarning($"Found bigger timeframe '{timeframeCandlesKvp.Key}' than given timeframe '{timeframe}'. " +
+                                               $"Will not execute '{symbol}_{timeframe}' candle evaluation on timeframe '{timeframeCandlesKvp.Key}'.");
+                            continue;
+                        }
 
-        //        candles.Clear(); // evaluation done, flush timeframe candles
+                        int neededCandles = timeframe / timeframeCandlesKvp.Key;
 
-        //        EnterMarket(symbol);
-        //    }
-        //}
+                        if (neededCandles > timeframeCandlesKvp.Value.Count())
+                        {
+                            _logger.LogWarning($"Not enough '{symbol}' candles on timeframe '{timeframeCandlesKvp.Key}'. " +
+                                               $"Needed candles: '{neededCandles}', Current candles: '{timeframeCandlesKvp.Value.Count()}'.");
+                            continue;
+                        }
+                        else if (neededCandles > 1)
+                        {
+                            List<InternalCandle> lastCandles = timeframeCandlesKvp.Value.TakeLast(neededCandles).ToList();
+
+                            SetCandlesPosition(lastCandles);
+
+                            candleEvaluation.SubCandles.Add(timeframeCandlesKvp.Key, lastCandles);
+                        }
+                        else if (neededCandles == 1)
+                        {
+                            candleEvaluation.MainCandle = timeframeCandlesKvp.Value.Last();
+                        }
+                    }
+
+                    //xxx for now log
+                    if (candleEvaluation.MainCandle != null && !candleEvaluation.SubCandles.IsNullOrEmpty())
+                    {
+                        _logger.LogInformation(candleEvaluation.Dump());
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Failed to execute '{symbol}_{timeframe}' candle evalaution.");
+                }
+            }
+        }
 
         //public void EnterMarket(string symbol)
         //{

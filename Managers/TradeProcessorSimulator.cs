@@ -75,11 +75,11 @@ namespace TradingExpertAdvisor.Managers
             HandlePriceChange(e.Symbol, e.Price);
         }
 
-        private void HandleMarketEvaluation(string symbol, MarketDirectionType directionType)
+        private void HandleMarketEvaluation(string symbol, MarketDirection directionType)
         {
             lock (_tradeBuffer)
             {
-                if (directionType == MarketDirectionType.Unknown)
+                if (directionType == MarketDirection.Unknown)
                     return;
 
                 decimal? lastPrice = _apiClient.GetLastPrice(symbol);
@@ -87,14 +87,14 @@ namespace TradingExpertAdvisor.Managers
                     return;
 
                 int activeTrades = _tradeBuffer.Where(x => x.Symbol == symbol && !x.HasCompleted).Count();
-                if (activeTrades >= _option.ActiveTradeThreshold)
+                if (activeTrades >= _option.ActiveTradesLimit)
                     return;
 
                 SimulationTrade trade = new SimulationTrade(_option.TakeProfitAmount, _option.StopLossAmount);
                 trade.Time = DateTime.Now;
                 trade.Symbol = symbol;
                 trade.EntryPrice = lastPrice.Value;
-                trade.TradeDirection = directionType == MarketDirectionType.Up ? TradeDirection.Buy : TradeDirection.Sell;
+                trade.TradeDirection = directionType == MarketDirection.Up ? TradeDirection.Buy : TradeDirection.Sell;
                 trade.Volume = 1;
 
                 _logger.LogInformation($"<<<<< Opening '{trade.Symbol}' trade in direction '{trade.TradeDirection}' @ price '{trade.EntryPrice}' <<<<<");
