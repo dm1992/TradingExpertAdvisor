@@ -7,14 +7,11 @@ using TradingExpertAdvisor.Interfaces;
 
 namespace TradingExpertAdvisor.Managers.Options
 {
-    public class CandleTransformerOption : IOption
+    public class MarketSignalGeneratorOption : IOption
     {
-        public List<string> Symbols { get; set; }
-        public List<int> Timeframes { get; set; }
-
         public string Dump()
         {
-            return $"Symbols: '{String.Join(", ", this.Symbols)}', Timeframes: '{String.Join(", ", this.Timeframes)}'";
+            throw new NotImplementedException();
         }
     }
 }

@@ -4,9 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TradingExpertAdvisor.Managers
+namespace TradingExpertAdvisor.Interfaces
 {
-    internal class TradingSignalGenerator
+    public interface IOption
     {
+        string Dump();
     }
 }

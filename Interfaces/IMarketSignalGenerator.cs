@@ -7,8 +7,8 @@ using TradingExpertAdvisor.Models.EventArgs;
 
 namespace TradingExpertAdvisor.Interfaces
 {
-    public interface ICandleEvaluator : IManager
+    public interface IMarketSignalGenerator : IManager
     {
-        event EventHandler<CandleEvaluatedEventArgs> CandleEvaluatedEventHandler;
+        event EventHandler<MarketSignalEventArgs> MarketSignalEventHandler;
     }
 }

@@ -14,7 +14,7 @@
     },
 
     "CandleEvaluator": { 
-      "Timeframes": [ 15, 60 ]
+      "Timeframes": [ 5, 60 ]
     },
 
     "TradeProcessorSimulator": {

@@ -57,9 +57,9 @@ try
             throw new Exception("Failed to start candle transformer.");
         }
 
-        CandleEvaluatorOption candleEvaluatorOption = new CandleEvaluatorOption();
+        CandleCollectorOption candleEvaluatorOption = new CandleCollectorOption();
         configuration.GetSection("AppConfig:CandleEvaluator").Bind(candleEvaluatorOption);
-        CandleEvaluator candleEvaluator = new CandleEvaluator(_loggerFactory, candleTransformer, candleEvaluatorOption);
+        CandleCollector candleEvaluator = new CandleCollector(_loggerFactory, candleTransformer, candleEvaluatorOption);
 
         if (!candleEvaluator.Initialize())
         {

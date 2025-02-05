@@ -13,8 +13,8 @@ namespace TradingExpertAdvisor.Managers
 {
     public class TradeProcessorSimulator : ITradeProcessor
     {
-        private readonly ILogger<CandleEvaluator> _logger;
-        private readonly ICandleEvaluator _marketEvaluator;
+        private readonly ILogger<CandleCollector> _logger;
+        private readonly IMarketSignalGenerator _marketSignalGenerator;
         private readonly IApiClient _apiClient;
         private readonly TradeProcessorSimulatorOption _option;
 
@@ -22,12 +22,12 @@ namespace TradingExpertAdvisor.Managers
         private List<SimulationTrade> _tradeBuffer;
 
         public TradeProcessorSimulator(ILoggerFactory loggerFactory,
-                               ICandleEvaluator marketEvaluator,
-                               IApiClient apiClient,
-                               TradeProcessorSimulatorOption option)
+                                       IMarketSignalGenerator marketSignalGenerator,
+                                       IApiClient apiClient,
+                                       TradeProcessorSimulatorOption option)
         {
-            _logger = loggerFactory.CreateLogger<CandleEvaluator>();
-            _marketEvaluator = marketEvaluator;
+            _logger = loggerFactory.CreateLogger<CandleCollector>();
+            _marketSignalGenerator = marketSignalGenerator;
             _apiClient = apiClient;
             _option = option;
 
@@ -46,7 +46,7 @@ namespace TradingExpertAdvisor.Managers
                 if (!_apiClient.StartPriceReceiverAsync(_option.Symbols).Result)
                     return false;
 
-                _marketEvaluator.CandleEvaluatedEventHandler += MarketEvaluationEventHandler;
+                _marketSignalGenerator.MarketSignalEventHandler += MarketSignalEventHandler;
                 _apiClient.PriceReceivedEventHandler += PriceChangedEventHandler;
 
                 Task.Run(() => RunBalanceTrackerInThread());
@@ -65,9 +65,9 @@ namespace TradingExpertAdvisor.Managers
             throw new NotImplementedException();
         }
 
-        private void MarketEvaluationEventHandler(object? sender, CandleEvaluatedEventArgs e)
+        private void MarketSignalEventHandler(object? sender, MarketSignalEventArgs e)
         {
-            HandleMarketEvaluation(e.Symbol, e.DirectionType);
+            //HandleMarketEvaluation(e.Symbol, e.DirectionType);
         }
 
         private void PriceChangedEventHandler(object? sender, PriceReceivedEventArgs e)

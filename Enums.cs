@@ -42,7 +42,6 @@ namespace TradingExpertAdvisor
 
     public enum CandleMetric
     { 
-        Unknown = 0,
         ActiveTotalVolume = 1,
         ActiveBuyVolume = 2,
         ActiveSellVolume = 3,
@@ -51,9 +50,8 @@ namespace TradingExpertAdvisor
         ClosePrice = 6
     }
 
-    public enum CandleMetricOperation
+    public enum CandleFilter
     {
-        Unknown = 0,
         AboveAverage = 1,
         BelowAverage = 2,
         AboveMedian = 3,

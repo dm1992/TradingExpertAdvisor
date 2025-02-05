@@ -112,6 +112,8 @@ namespace TradingExpertAdvisor.Managers
 
         private void InvokeCandleTransformedEvent(InternalCandle candle)
         {
+            if (candle == null) return;
+
             _logger.LogDebug($"Invoking candle transformed event with '{candle.Symbol}_{candle.Timeframe}' candle. ");
 
             this.CandleTransformedEventHandler?.Invoke(this, new CandleTransformedEventArgs(candle));
