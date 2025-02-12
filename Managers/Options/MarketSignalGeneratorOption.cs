@@ -9,6 +9,9 @@ namespace TradingExpertAdvisor.Managers.Options
 {
     public class MarketSignalGeneratorOption : IOption
     {
+        public Dictionary<int, int> TimeframeThresholds { get; set; }
+
+
         public string Dump()
         {
             throw new NotImplementedException();

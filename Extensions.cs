@@ -137,8 +137,8 @@ namespace TradingExpertAdvisor
                 case CandleMetric.PassiveSellVolume:
                     return candles.Where(x => x.PassiveSellVolumePercentage > value).ToList();
 
-                case CandleMetric.ClosePrice:
-                    return candles.Where(x => x.ClosePrice > value).ToList();
+                case CandleMetric.DeltaPrice:
+                    return candles.Where(x => x.DeltaPrice > value).ToList();
 
                 default:
                     throw new InvalidOperationException($"Not supported candle metric: '{candleMetric}'.");
@@ -167,8 +167,8 @@ namespace TradingExpertAdvisor
                 case CandleMetric.PassiveSellVolume:
                     return candles.Where(x => x.PassiveSellVolumePercentage < value).ToList();
 
-                case CandleMetric.ClosePrice:
-                    return candles.Where(x => x.ClosePrice < value).ToList();
+                case CandleMetric.DeltaPrice:
+                    return candles.Where(x => x.DeltaPrice < value).ToList();
 
                 default:
                     throw new InvalidOperationException($"Not supported candle metric: '{candleMetric}'.");
@@ -197,8 +197,8 @@ namespace TradingExpertAdvisor
                 case CandleMetric.PassiveSellVolume:
                     return candles.Where(x => x.PassiveSellVolumePercentage > value).OrderBy(x => x.PassiveSellVolumePercentage).LastOrDefault();
 
-                case CandleMetric.ClosePrice:
-                    return candles.Where(x => x.ClosePrice > value).OrderBy(x => x.ClosePrice).LastOrDefault();
+                case CandleMetric.DeltaPrice:
+                    return candles.Where(x => x.DeltaPrice > value).OrderBy(x => x.DeltaPrice).LastOrDefault();
 
                 default:
                     throw new InvalidOperationException($"Not supported candle metric: '{candleMetric}'.");
@@ -227,8 +227,8 @@ namespace TradingExpertAdvisor
                 case CandleMetric.PassiveSellVolume:
                     return candles.Where(x => x.PassiveSellVolumePercentage < value).OrderBy(x => x.PassiveSellVolumePercentage).FirstOrDefault();
 
-                case CandleMetric.ClosePrice:
-                    return candles.Where(x => x.ClosePrice < value).OrderBy(x => x.ClosePrice).FirstOrDefault();
+                case CandleMetric.DeltaPrice:
+                    return candles.Where(x => x.DeltaPrice < value).OrderBy(x => x.DeltaPrice).FirstOrDefault();
 
                 default:
                     throw new InvalidOperationException($"Not supported candle metric: '{candleMetric}'.");
@@ -257,8 +257,8 @@ namespace TradingExpertAdvisor
                 case CandleMetric.PassiveSellVolume:
                     return candles.Average(x => x.PassiveSellVolumePercentage);
 
-                case CandleMetric.ClosePrice:
-                    return candles.Average(x => x.ClosePrice);
+                case CandleMetric.DeltaPrice:
+                    return candles.Average(x => x.DeltaPrice);
 
                 default:
                     throw new InvalidOperationException($"Not supported candle metric: '{metric}'.");
@@ -294,8 +294,8 @@ namespace TradingExpertAdvisor
                     metrics = candles.OrderBy(x => x.PassiveSellVolumePercentage).Select(x => x.PassiveSellVolumePercentage).ToList();
                     break;
 
-                case CandleMetric.ClosePrice:
-                    metrics = candles.OrderBy(x => x.ClosePrice).Select(x => x.ClosePrice).ToList();
+                case CandleMetric.DeltaPrice:
+                    metrics = candles.OrderBy(x => x.DeltaPrice).Select(x => x.DeltaPrice).ToList();
                     break;
 
                 default:

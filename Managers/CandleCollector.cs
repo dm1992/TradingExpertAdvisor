@@ -26,7 +26,7 @@ namespace TradingExpertAdvisor.Managers
         private readonly CandleCollectorOption _option;
 
         private bool _isInitialized;
-        private Dictionary<string, Dictionary<int, List<InternalCandle>>> _timeframeCandles;
+        private Dictionary<string, Dictionary<int, List<InternalCandle>>> _symbolCandles;
 
         public CandleCollector(ILoggerFactory loggerFactory,
                                ICandleTransformer candleTransformer,
@@ -37,7 +37,7 @@ namespace TradingExpertAdvisor.Managers
             _option = option;
 
             _isInitialized = false;
-            _timeframeCandles = new Dictionary<string, Dictionary<int, List<InternalCandle>>>();
+            _symbolCandles = new Dictionary<string, Dictionary<int, List<InternalCandle>>>();
         }
 
 
@@ -69,27 +69,27 @@ namespace TradingExpertAdvisor.Managers
 
         private void SaveCandle(InternalCandle candle)
         {
-            lock (_timeframeCandles)
+            lock (_symbolCandles)
             {
                 try
                 {
                     _logger.LogDebug($"Saving '{candle.Symbol}_{candle.Timeframe}' candle " +
                                      $"with price O = '{candle.OpenPrice}', H = '{candle.HighPrice}', L = '{candle.LowPrice}', C = '{candle.ClosePrice}'.");
 
-                    if (!_timeframeCandles.TryGetValue(candle.Symbol, out Dictionary<int, List<InternalCandle>> timeframeCandles))
+                    if (!_symbolCandles.TryGetValue(candle.Symbol, out Dictionary<int, List<InternalCandle>> symbolCandles))
                     {
-                        timeframeCandles = new Dictionary<int, List<InternalCandle>>();
-                        timeframeCandles.Add(candle.Timeframe, new List<InternalCandle>() { candle });
+                        symbolCandles = new Dictionary<int, List<InternalCandle>>();
+                        symbolCandles.Add(candle.Timeframe, new List<InternalCandle>() { candle });
 
-                        _timeframeCandles.Add(candle.Symbol, timeframeCandles);
+                        _symbolCandles.Add(candle.Symbol, symbolCandles);
                     }
-                    else if (!timeframeCandles.TryGetValue(candle.Timeframe, out List<InternalCandle> candles))
+                    else if (!symbolCandles.TryGetValue(candle.Timeframe, out List<InternalCandle> timeframeCandles))
                     {
-                        timeframeCandles.Add(candle.Timeframe, new List<InternalCandle>() { candle });
+                        symbolCandles.Add(candle.Timeframe, new List<InternalCandle>() { candle });
                     }
                     else
                     {
-                        candles.Add(candle); //xxx when to remove them, if any?
+                        timeframeCandles.Add(candle); //xxx when to remove them, if any?
                     }
                 }
                 catch (Exception ex)
@@ -112,7 +112,7 @@ namespace TradingExpertAdvisor.Managers
 
         private void CreateCandleCollection(string symbol, int timeframe)
         {
-            lock (_timeframeCandles)
+            lock (_symbolCandles)
             {
                 try
                 {
@@ -124,7 +124,7 @@ namespace TradingExpertAdvisor.Managers
 
                     _logger.LogDebug($">>>>> CREATING '{symbol}_{timeframe}' CANDLE COLLECTION <<<<<");
 
-                    if (!_timeframeCandles.TryGetValue(symbol, out Dictionary<int, List<InternalCandle>> timeframeCandles) || timeframeCandles.IsNullOrEmpty())
+                    if (!_symbolCandles.TryGetValue(symbol, out Dictionary<int, List<InternalCandle>> symbolCandles) || symbolCandles.IsNullOrEmpty())
                     {
                         _logger.LogWarning($"No '{symbol}' candles.");
                         return;
@@ -132,7 +132,7 @@ namespace TradingExpertAdvisor.Managers
 
                     CandleCollection candleCollection = new CandleCollection();
 
-                    foreach (var kvp in timeframeCandles.OrderBy(x => x.Key))
+                    foreach (var kvp in symbolCandles.OrderBy(x => x.Key))
                     {
                         if (timeframe < kvp.Key)
                         {
@@ -174,10 +174,10 @@ namespace TradingExpertAdvisor.Managers
 
         private void InvokeCandleCollectedEvent(CandleCollection candleCollection)
         {
-            if (candleCollection == null || candleCollection.MainCandle == null || candleCollection.TimeframeSubCandles.IsNullOrEmpty())
+            if (!Helpers.IsCandleCollectionValid(candleCollection))
                 return;
 
-            _logger.LogDebug($"Invoking candle collected event with '{candleCollection.MainCandle.Symbol}_{candleCollection.MainCandle.Timeframe}' candle. ");
+            _logger.LogDebug($"Invoking candle collected event with '{candleCollection.Symbol}_{candleCollection.Timeframe}' candle. ");
 
             this.CandleCollectedEventHandler?.Invoke(this, new CandleCollectedEventArgs(candleCollection));
         }

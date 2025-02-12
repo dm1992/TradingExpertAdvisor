@@ -47,7 +47,7 @@ namespace TradingExpertAdvisor
         ActiveSellVolume = 3,
         PassiveBuyVolume = 4,
         PassiveSellVolume = 5,
-        ClosePrice = 6
+        DeltaPrice = 6
     }
 
     public enum CandleFilter

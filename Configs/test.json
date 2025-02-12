@@ -13,8 +13,16 @@
       "Timeframes": [ 1, 5, 15, 30, 60 ] //xxx ignore 1min
     },
 
-    "CandleEvaluator": { 
-      "Timeframes": [ 5, 60 ]
+    "CandleCollector": {
+      "Timeframes": [ 5, 15, 60 ]
+    },
+
+    "MarketSignalGenerator": {
+      "TimeframeThresholds": {
+        "5": 2,
+        "15": 2,
+        "60": 2
+      }
     },
 
     "TradeProcessorSimulator": {

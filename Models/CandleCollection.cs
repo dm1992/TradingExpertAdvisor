@@ -26,10 +26,108 @@ namespace TradingExpertAdvisor.Models
         /// </summary>
         public Dictionary<int, List<InternalCandle>> TimeframeSubCandles { get; set; } = new Dictionary<int, List<InternalCandle>>();
 
+        /// <summary>
+        /// Determined by main candle.
+        /// </summary>
+        public string Symbol
+        {
+            get
+            {
+                return this.MainCandle?.Symbol ?? "N/A";
+            }
+        }
+
+        /// <summary>
+        /// Determined by main candle.
+        /// </summary>
+        public int Timeframe
+        {
+            get
+            {
+                return this.MainCandle?.Timeframe ?? -1;
+            }
+        }
+
+        /// <summary>
+        /// Determined by main candle.
+        /// </summary>
+        public InternalCandleDirection DirectionType
+        {
+            get
+            {
+                return this.MainCandle?.DirectionType ?? InternalCandleDirection.Unknown;
+            }
+        }
+
+        /// <summary>
+        /// Ignoring candle metrics and using all timeframe sub candles.
+        /// </summary>
+        public decimal DirectionTypePercentage { get { return GetDirectionTypePercentage_TimeframeSubCandles(); } }
+
+        public Dictionary<CandleFilter, Dictionary<CandleMetric, decimal>> DirectionTypeWithFilterMetricPercentages
+        {
+            get
+            {
+                return GetDirectionTypePercentage_FilterTimeframeSubCandlesMetric();
+            }
+        }
+
+
+        private decimal GetDirectionTypePercentage_TimeframeSubCandles()
+        {
+            if (this.DirectionType == InternalCandleDirection.Unknown)
+                return 0;
+
+            if (this.TimeframeSubCandles.IsNullOrEmpty())
+                return 0;
+
+            return (this.TimeframeSubCandles.Count(x => x.Value.Count(y => y.DirectionType == this.DirectionType) > 0) /
+                    this.TimeframeSubCandles.Count(x => x.Value.Count() > 0)) * 100.0m;
+        }
+
+        private Dictionary<CandleFilter, Dictionary<CandleMetric, decimal>> GetDirectionTypePercentage_FilterTimeframeSubCandlesMetric()
+        {
+            Dictionary<CandleFilter, Dictionary<CandleMetric, decimal>> candleFilterMetricPercentages = new Dictionary<CandleFilter, Dictionary<CandleMetric, decimal>>();
+
+            foreach (CandleFilter candleFilter in Enum.GetValues(typeof(CandleFilter)))
+            {
+                candleFilterMetricPercentages.Add(candleFilter, GetDirectionTypePercentage_TimeframeSubCandlesMetricWithFilter(candleFilter));
+            }
+
+            return candleFilterMetricPercentages;
+        }
+
+        private Dictionary<CandleMetric, decimal> GetDirectionTypePercentage_TimeframeSubCandlesMetricWithFilter(CandleFilter candleFilter)
+        {
+            if (this.DirectionType == InternalCandleDirection.Unknown)
+                return null;
+
+            if (this.TimeframeSubCandles.IsNullOrEmpty())
+                return null;
+
+            Dictionary<CandleMetric, decimal> candleMetricPercentages = new Dictionary<CandleMetric, decimal>();
+
+            foreach (CandleMetric candleMetric in Enum.GetValues(typeof(CandleMetric)))
+            {
+                var timeframeSubCandles = FilterTimeframeSubCandlesWithCandleMetric(candleFilter, candleMetric);
+                var percentage = 0.0m;
+
+                if (!timeframeSubCandles.IsNullOrEmpty())
+                {
+                    percentage = (timeframeSubCandles.Count(x => x.Value.Count(y => y.DirectionType == this.DirectionType) > 0) /
+                                  timeframeSubCandles.Count(x => x.Value.Count() > 0)) * 100.0m;
+                }
+
+                candleMetricPercentages.Add(candleMetric, percentage);
+            }
+
+            return candleMetricPercentages;
+        }
+
 
         #region Candle collection filter methods
 
-        public Dictionary<int, List<InternalCandle>> FilterTimeframeSubCandlesWithCandleMetric(CandleFilter candleFilter, CandleMetric candleMetric)
+        private Dictionary<int, List<InternalCandle>> FilterTimeframeSubCandlesWithCandleMetric(CandleFilter candleFilter, CandleMetric candleMetric)
         {
             switch (candleFilter)
             {
@@ -167,32 +265,32 @@ namespace TradingExpertAdvisor.Models
 
         #endregion
 
-        public string Dump()
-        {
-            string dump = $"\n\n{this.MainCandle.Dump()}";
+        //public string Dump()
+        //{
+        //    string dump = $"\n\n{this.MainCandle.Dump()}";
 
-            foreach(var candleFilter in Enum.GetValues(typeof(CandleFilter)))
-            {
-                foreach(var candleMetric in Enum.GetValues(typeof(CandleMetric)))
-                {
-                    dump += DumpCandlesPositionsOnFilteredTimeframeSubCandlesWithCandleMetric((CandleFilter)candleFilter, (CandleMetric)candleMetric);
-                }
-            }
+        //    foreach(var candleFilter in Enum.GetValues(typeof(CandleFilter)))
+        //    {
+        //        foreach(var candleMetric in Enum.GetValues(typeof(CandleMetric)))
+        //        {
+        //            dump += DumpCandlesPositionsOnFilteredTimeframeSubCandlesWithCandleMetric((CandleFilter)candleFilter, (CandleMetric)candleMetric);
+        //        }
+        //    }
 
-            return dump;
-        }
+        //    return dump;
+        //}
 
-        public string DumpCandlesPositionsOnFilteredTimeframeSubCandlesWithCandleMetric(CandleFilter candleFilter, CandleMetric candleMetric)
-        {
-            string dump = $"\n------ Dumping timeframe subcandles positions with CANDLE FILTER: {candleFilter} on CANDLE METRIC: {candleMetric} --------";
+        //public string DumpCandlesPositionsOnFilteredTimeframeSubCandlesWithCandleMetric(CandleFilter candleFilter, CandleMetric candleMetric)
+        //{
+        //    string dump = $"\n------ Dumping timeframe subcandles positions with CANDLE FILTER: {candleFilter} on CANDLE METRIC: {candleMetric} --------";
 
-            var timeframeSubCandles = FilterTimeframeSubCandlesWithCandleMetric((CandleFilter)candleFilter, (CandleMetric)candleMetric);
+        //    var timeframeSubCandles = FilterTimeframeSubCandlesWithCandleMetric((CandleFilter)candleFilter, (CandleMetric)candleMetric);
 
-            dump += $"\n{timeframeSubCandles.DumpCandlesPositions()}";
+        //    dump += $"\n{timeframeSubCandles.DumpCandlesPositions()}";
 
-            dump += $"\n\n----------------------------------------------";
+        //    dump += $"\n\n----------------------------------------------";
 
-            return dump;
-        }
+        //    return dump;
+        //}
     }
 }
