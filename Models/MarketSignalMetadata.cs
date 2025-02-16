@@ -9,15 +9,17 @@ namespace TradingExpertAdvisor.Models
     public class MarketSignalMetadata
     {
         public string Symbol { get; set; }
+        public int Timeframe { get; set; }
         public DateTime Timestamp { get; set; }
         public MarketDirection MarketDirection { get; set; }
-        decimal ProbabilityPercentage { get; set; }
+        public decimal MarketDirectionPercentage { get; set; }
 
-        public MarketSignalMetadata(string symbol, MarketDirection marketDirection, decimal probabilityPercentage)
+        public MarketSignalMetadata(string symbol, int timeframe, MarketDirection marketDirection, decimal marketDirectionPercentage)
         {
             this.Symbol = symbol;
+            this.Timeframe = timeframe;
             this.MarketDirection = marketDirection;
-            this.ProbabilityPercentage = probabilityPercentage;
+            this.MarketDirectionPercentage = marketDirectionPercentage;
             this.Timestamp = DateTime.Now;
         }
     }

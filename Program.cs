@@ -57,19 +57,28 @@ try
             throw new Exception("Failed to start candle transformer.");
         }
 
-        CandleCollectorOption candleEvaluatorOption = new CandleCollectorOption();
-        configuration.GetSection("AppConfig:CandleEvaluator").Bind(candleEvaluatorOption);
-        CandleCollector candleEvaluator = new CandleCollector(_loggerFactory, candleTransformer, candleEvaluatorOption);
+        CandleCollectorOption candleCollectorOption = new CandleCollectorOption();
+        configuration.GetSection("AppConfig:CandleCollector").Bind(candleCollectorOption);
+        CandleCollector candleCollector = new CandleCollector(_loggerFactory, candleTransformer, candleCollectorOption);
 
-        if (!candleEvaluator.Initialize())
+        if (!candleCollector.Initialize())
         {
-            throw new Exception("Failed to start candle evaluator.");
+            throw new Exception("Failed to start candle collector.");
+        }
+
+        MarketSignalGeneratorOption marketSignalGeneratorOption = new MarketSignalGeneratorOption();
+        configuration.GetSection("AppConfig:MarketSignalGenerator").Bind(marketSignalGeneratorOption);
+        MarketSignalGenerator marketSignalGenerator = new MarketSignalGenerator(_loggerFactory, candleCollector, marketSignalGeneratorOption);
+
+        if (!marketSignalGenerator.Initialize())
+        {
+            throw new Exception("Failed to start market signal generator.");
         }
 
         TradeProcessorSimulatorOption tradeProcessorSimulatorOption = new TradeProcessorSimulatorOption();
         configuration.GetSection("AppConfig:TradeProcessorSimulator").Bind(tradeProcessorSimulatorOption);
 
-        TradeProcessorSimulator tradeProcessorSimulator = new TradeProcessorSimulator(_loggerFactory, candleEvaluator, apiClient, tradeProcessorSimulatorOption);
+        TradeProcessorSimulator tradeProcessorSimulator = new TradeProcessorSimulator(_loggerFactory, marketSignalGenerator, apiClient, tradeProcessorSimulatorOption);
 
         if (!tradeProcessorSimulator.Initialize())
         {

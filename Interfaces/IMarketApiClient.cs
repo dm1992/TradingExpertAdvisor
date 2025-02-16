@@ -7,7 +7,7 @@ using TradingExpertAdvisor.Models.EventArgs;
 
 namespace TradingExpertAdvisor.Interfaces
 {
-    public interface IApiClient
+    public interface IMarketApiClient
     {
         event EventHandler<TradeReceivedEventArgs> TradeReceivedEventHandler;
         event EventHandler<OrderbookReceivedEventArgs> OrderbookReceivedEventHandler;
@@ -19,7 +19,7 @@ namespace TradingExpertAdvisor.Interfaces
 
         decimal? GetLastPrice(string symbol);
 
-        // get announcements ... what/when will be listed
+        //Task<string> GetAnnouncements(); //xxx
 
         Task<bool> StartTradeReceiverAsync(IEnumerable<string> symbols);
 

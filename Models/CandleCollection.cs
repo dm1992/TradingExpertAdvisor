@@ -62,9 +62,15 @@ namespace TradingExpertAdvisor.Models
         /// <summary>
         /// Ignoring candle metrics and using all timeframe sub candles.
         /// </summary>
-        public decimal DirectionTypePercentage { get { return GetDirectionTypePercentage_TimeframeSubCandles(); } }
+        public decimal DirectionTypeGeneralPercentage 
+        { 
+            get 
+            { 
+                return GetDirectionTypePercentage_TimeframeSubCandles(); 
+            } 
+        }
 
-        public Dictionary<CandleFilter, Dictionary<CandleMetric, decimal>> DirectionTypeWithFilterMetricPercentages
+        public Dictionary<CandleFilter, Dictionary<CandleMetric, decimal>> DirectionTypeFilterMetricPercentages
         {
             get
             {

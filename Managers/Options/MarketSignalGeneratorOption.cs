@@ -9,8 +9,7 @@ namespace TradingExpertAdvisor.Managers.Options
 {
     public class MarketSignalGeneratorOption : IOption
     {
-        public Dictionary<int, int> TimeframeThresholds { get; set; }
-
+        public Dictionary<int, int> CandleCollectionTimeframeThresholds { get; set; }
 
         public string Dump()
         {

@@ -7,8 +7,10 @@ using TradingExpertAdvisor.Interfaces;
 
 namespace TradingExpertAdvisor.Managers.Options
 {
-    public class TradeProcessorOption : IOption
+    public class MarketSignalValidatorOption : IOption
     {
+        public Dictionary<int, int> MarketSignalTimeframeThresholds { get; set; }
+
         public string Dump()
         {
             throw new NotImplementedException();

@@ -8,5 +8,11 @@ namespace TradingExpertAdvisor.Models.EventArgs
 {
     public class MarketSignalEventArgs
     {
+        public MarketSignalMetadata MarketSignalMetadata { get; set; }
+
+        public MarketSignalEventArgs(MarketSignalMetadata marketSignalMetadata)
+        {
+            this.MarketSignalMetadata = marketSignalMetadata;
+        }
     }
 }

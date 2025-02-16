@@ -15,18 +15,18 @@ namespace TradingExpertAdvisor.Managers
     {
         public event EventHandler<MarketSignalEventArgs> MarketSignalEventHandler;
 
-        private readonly ILogger<CandleCollector> _logger;
+        private readonly ILogger<MarketSignalGenerator> _logger;
         private readonly ICandleCollector _candleCollector;
         private readonly MarketSignalGeneratorOption _option;
 
         private bool _isInitialized;
         private Dictionary<string, Dictionary<int, List<CandleCollection>>> _symbolCandleCollections;
-
+      
         public MarketSignalGenerator(ILoggerFactory loggerFactory,
                                      ICandleCollector candleCollector,
                                      MarketSignalGeneratorOption option)
         {
-            _logger = loggerFactory.CreateLogger<CandleCollector>();
+            _logger = loggerFactory.CreateLogger<MarketSignalGenerator>();
             _candleCollector = candleCollector;
             _option = option;
 
@@ -57,7 +57,7 @@ namespace TradingExpertAdvisor.Managers
         {
             SaveCandleCollection(e.CandleCollection);
 
-            EvaluateCandleCollections(e.CandleCollection.Symbol, e.CandleCollection.Timeframe);
+            CreateMarketSignal(e.CandleCollection.Symbol, e.CandleCollection.Timeframe);
         }
 
         private void SaveCandleCollection(CandleCollection candleCollection)
@@ -89,20 +89,39 @@ namespace TradingExpertAdvisor.Managers
             }
         }
 
-        private void EvaluateCandleCollections(string symbol, int timeframe)
+        private void CreateMarketSignal(string symbol, int timeframe)
         {
             try
             {
-                //xxx evaluate last N main candles and its subcandles,...
-                // compare this to bigger picture
-
-                // TBD: IMPLEMENT STRATEGY LOGIC HERE !!!!
-
-                if (!IsTimeframeCandleCollectionReached(symbol, timeframe))
+                if (!IsCandleCollectionTimeframeThresholdReached(symbol, timeframe))
+                {
+                    _logger.LogWarning($"Failed to create market signal. '{symbol}_{timeframe}' candle collection threashold not reached yet.");
                     return;
+                }
 
+                List<CandleCollection> candleCollections = GetCandleCollections(symbol, timeframe);
 
-                FlushTimeframeCandleCollection(symbol, timeframe);
+                if (candleCollections.IsNullOrEmpty())
+                {
+                    _logger.LogError($"Failed to create market signal. '{symbol}_{timeframe}' candle collections are empty, very strange because its threshold is reached!");
+                    return;
+                }
+
+                MarketDirection marketDirection = GetCandleCollectionsMarketDirection(candleCollections, out decimal marketDirectionPercentage);
+
+                if (marketDirection == MarketDirection.Unknown)
+                {
+                    _logger.LogInformation($"Unknown market direction on '{symbol}_{timeframe}' candle collection. Do nothing...");
+                    return;
+                }
+
+                _logger.LogDebug($"Creating '{symbol}_{timeframe}' market signal with direction '{marketDirection}' and percentage '{marketDirectionPercentage}'%.");
+
+                MarketSignalMetadata marketSignal = new MarketSignalMetadata(symbol, timeframe, marketDirection, marketDirectionPercentage);
+
+                InvokeMarketSignalEvent(marketSignal);
+
+                FlushCandleCollection(symbol, timeframe);
             }
             catch (Exception ex)
             {
@@ -110,13 +129,13 @@ namespace TradingExpertAdvisor.Managers
             }
         }
 
-        private bool IsTimeframeCandleCollectionReached(string symbol, int timeframe)
+        private bool IsCandleCollectionTimeframeThresholdReached(string symbol, int timeframe)
         {
             if (_symbolCandleCollections.TryGetValue(symbol, out Dictionary<int, List<CandleCollection>> symbolCandleCollections))
             {
                 if (symbolCandleCollections.TryGetValue(timeframe, out List<CandleCollection> timeframeCandleCollections)) 
                 {
-                    if (_option.TimeframeThresholds.TryGetValue(timeframe, out int threshold))
+                    if (_option.CandleCollectionTimeframeThresholds.TryGetValue(timeframe, out int threshold))
                     {
                         return timeframeCandleCollections.Count >= threshold;
                     }
@@ -126,7 +145,59 @@ namespace TradingExpertAdvisor.Managers
             return false;
         }
 
-        private void FlushTimeframeCandleCollection(string symbol, int timeframe)
+        private List<CandleCollection> GetCandleCollections(string symbol, int timeframe)
+        {
+            if (_symbolCandleCollections.TryGetValue(symbol, out Dictionary<int, List<CandleCollection>> symbolCandleCollections))
+            {
+                if (symbolCandleCollections.TryGetValue(timeframe, out List<CandleCollection> timeframeCandleCollections))
+                {
+                    return timeframeCandleCollections;
+                }
+            }
+
+            return null;
+        }
+
+        private MarketDirection GetCandleCollectionsMarketDirection(List<CandleCollection> candleCollections, out decimal marketDirectionPercentage)
+        {
+            marketDirectionPercentage = 0;
+
+            if (candleCollections.IsNullOrEmpty())
+                return MarketDirection.Unknown;
+
+            //xxx need to check this code!
+
+            var ups = candleCollections.Where(x => x.DirectionType == InternalCandleDirection.Expected_Up || x.DirectionType == InternalCandleDirection.Not_Expected_Up);
+            var downs = candleCollections.Where(x => x.DirectionType == InternalCandleDirection.Expected_Down || x.DirectionType == InternalCandleDirection.Not_Expected_Down);
+            var unknows = candleCollections.Where(x => x.DirectionType == InternalCandleDirection.Unknown);
+
+            if (unknows.Count() > ups.Count() + downs.Count())
+                return MarketDirection.Unknown;
+
+            decimal averageUpsPercentage = 0;
+            decimal averageDownsPercentage = 0;
+
+            if (!ups.IsNullOrEmpty())
+                averageUpsPercentage = ups.Average(x => x.DirectionTypeGeneralPercentage);
+
+            if (!downs.IsNullOrEmpty())
+                averageDownsPercentage = downs.Average(x => x.DirectionTypeGeneralPercentage);
+
+            if (averageUpsPercentage > averageDownsPercentage)
+            {
+                marketDirectionPercentage = averageUpsPercentage;
+                return MarketDirection.Up;
+            }
+            else if (averageDownsPercentage > averageUpsPercentage)
+            {
+                marketDirectionPercentage = averageDownsPercentage;
+                return MarketDirection.Down;
+            }
+
+            return MarketDirection.Unknown;
+        }
+
+        private void FlushCandleCollection(string symbol, int timeframe)
         {
             if (_symbolCandleCollections.TryGetValue(symbol, out Dictionary<int, List<CandleCollection>> symbolCandleCollections))
             {
@@ -143,7 +214,9 @@ namespace TradingExpertAdvisor.Managers
         {
             if (marketSignalMetadata == null) return;
 
-            // validate invoked market signal against similar previous patterns (introduce DB)
+            _logger.LogDebug($"Invoking '{marketSignalMetadata.Symbol}_{marketSignalMetadata.Timeframe}' market signal event.");
+
+            this.MarketSignalEventHandler?.Invoke(this, new MarketSignalEventArgs(marketSignalMetadata));
         }
     }
 }
