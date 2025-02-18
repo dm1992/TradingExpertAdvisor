@@ -2,8 +2,7 @@
 using TradingExpertAdvisor.Interfaces;
 using TradingExpertAdvisor.Models.EventArgs;
 using TradingExpertAdvisor.Models;
-using TradingExpertAdvisor.Managers.Options;
-using System.Reflection.Metadata;
+using TradingExpertAdvisor.Options;
 
 namespace TradingExpertAdvisor.Managers
 {
@@ -15,22 +14,17 @@ namespace TradingExpertAdvisor.Managers
         public event EventHandler<CandleTransformedEventArgs> CandleTransformedEventHandler;
 
         private readonly ILogger<CandleTransformer> _logger;
-        private readonly IApiClient _apiClient;
-        private readonly CandleTransformerOption _option;
+        private readonly IExchangeApiClient _exchangeApiClient;
 
-        private bool _isInitialized;
-        private Dictionary<string, Dictionary<int, InternalCandle>> _timeframeCandles;
+        private Dictionary<string, Dictionary<int, InternalCandle>> _symbolCandles = new Dictionary<string, Dictionary<int, InternalCandle>>();
+        private ExchangeApiOption _option = null;
+        private bool _isInitialized = false; 
 
         public CandleTransformer(ILoggerFactory loggerFactory,
-                                IApiClient apiClient,
-                                CandleTransformerOption option)
+                                 IExchangeApiClient exchangeApiClient)
         {
             _logger = loggerFactory.CreateLogger<CandleTransformer>();
-            _apiClient = apiClient;
-            _option = option;
-
-            _isInitialized = false;
-            _timeframeCandles = new Dictionary<string, Dictionary<int, InternalCandle>>();
+            _exchangeApiClient = exchangeApiClient;
         }
 
 
@@ -40,21 +34,14 @@ namespace TradingExpertAdvisor.Managers
             {
                 if (_isInitialized) return true;
 
-                _logger.LogInformation($"Initializing with options '{_option.Dump()}'...");
+                _logger.LogInformation($"Initializing...");
 
-                if (!_apiClient.StartCandleReceiverAsync(_option.Symbols, _option.Timeframes).Result)
-                    return false;
+                _option = _exchangeApiClient.GetOption();
 
-                if (!_apiClient.StartTradeReceiverAsync(_option.Symbols).Result)
-                    return false;
-
-                if (!_apiClient.StartOrderbookReceiverAsync(_option.Symbols).Result)
-                    return false;
-
-                _apiClient.CandleReceivedEventHandler += CandleReceivedEventHandler;
-                _apiClient.TradeReceivedEventHandler += TradeReceivedEventHandler;
-                _apiClient.OrderbookReceivedEventHandler += OrderbookReceivedEventHandler;
-                _apiClient.UnsolicitedMessageEventHandler += UnsolicitedMessageEventHandler;
+                _exchangeApiClient.CandleReceivedEventHandler += CandleReceivedEventHandler;
+                _exchangeApiClient.TradeReceivedEventHandler += TradeReceivedEventHandler;
+                _exchangeApiClient.OrderbookReceivedEventHandler += OrderbookReceivedEventHandler;
+                _exchangeApiClient.UnsolicitedMessageEventHandler += UnsolicitedMessageEventHandler;
 
                 return _isInitialized = true;
             }
@@ -67,7 +54,7 @@ namespace TradingExpertAdvisor.Managers
 
         private bool AreCandlesReady(string symbol)
         {
-            if (!_timeframeCandles.TryGetValue(symbol, out Dictionary<int, InternalCandle> timeframeCandles))
+            if (!_symbolCandles.TryGetValue(symbol, out Dictionary<int, InternalCandle> timeframeCandles))
                 return false;
 
             return timeframeCandles.Keys.Count == _option.Timeframes.Count;
@@ -90,63 +77,54 @@ namespace TradingExpertAdvisor.Managers
 
         private void UnsolicitedMessageEventHandler(object? sender, UnsolicitedMessageEventArgs e)
         {
-            switch (e.Type)
+            switch (e.UnsolicitedMessage.Type)
             {
                 case MessageType.Info:
-                    _logger.LogInformation(e.Message);
+                    _logger.LogInformation(e.UnsolicitedMessage.Message);
                     break;
 
                 case MessageType.Warning:
-                    _logger.LogWarning(e.Message);
+                    _logger.LogWarning(e.UnsolicitedMessage.Message);
                     break;
 
                 case MessageType.Error:
-                    _logger.LogError(e.Message);
+                    _logger.LogError(e.UnsolicitedMessage.Message);
                     break;
 
                 default:
-                    _logger.LogDebug(e.Message);
+                    _logger.LogDebug(e.UnsolicitedMessage.Message);
                     break;
             }
         }
 
-        private void InvokeCandleTransformedEvent(InternalCandle candle)
-        {
-            if (candle == null) return;
-
-            _logger.LogDebug($"Invoking candle transformed event with '{candle.Symbol}_{candle.Timeframe}' candle. ");
-
-            this.CandleTransformedEventHandler?.Invoke(this, new CandleTransformedEventArgs(candle));
-        }
-
         private void HandleReceivedCandle(InternalCandle candle)
         {
-            lock (_timeframeCandles)
+            lock (_symbolCandles)
             {
                 try
                 {
-                    if (!_timeframeCandles.TryGetValue(candle.Symbol, out Dictionary<int, InternalCandle> timeframeCandle))
+                    if (!_symbolCandles.TryGetValue(candle.Symbol, out Dictionary<int, InternalCandle> symbolCandles))
                     {
                         _logger.LogDebug($"Received new '{candle.Symbol}_{candle.Timeframe}' candle.");
 
-                        timeframeCandle = new Dictionary<int, InternalCandle>();
-                        timeframeCandle.Add(candle.Timeframe, candle);
+                        symbolCandles = new Dictionary<int, InternalCandle>();
+                        symbolCandles.Add(candle.Timeframe, candle);
 
-                        _timeframeCandles.Add(candle.Symbol, timeframeCandle);
+                        _symbolCandles.Add(candle.Symbol, symbolCandles);
                     }
-                    else if (!timeframeCandle.TryGetValue(candle.Timeframe, out InternalCandle transformedCandle))
+                    else if (!symbolCandles.TryGetValue(candle.Timeframe, out InternalCandle timeframeCandle))
                     {
                         _logger.LogDebug($"Received new '{candle.Symbol}_{candle.Timeframe}' candle.");
 
-                        timeframeCandle.Add(candle.Timeframe, candle);
+                        symbolCandles.Add(candle.Timeframe, candle);
                     }
                     else if (candle.IsClosed)
                     {
-                        _logger.LogDebug($"Closing '{transformedCandle.Symbol}_{transformedCandle.Timeframe}' candle.");
+                        _logger.LogDebug($"Closing '{timeframeCandle.Symbol}_{timeframeCandle.Timeframe}' candle.");
 
-                        InvokeCandleTransformedEvent(transformedCandle);
+                        InvokeCandleTransformedEvent(timeframeCandle);
 
-                        timeframeCandle.Remove(transformedCandle.Timeframe);
+                        symbolCandles.Remove(timeframeCandle.Timeframe);
                     }
                 }
                 catch (Exception ex)
@@ -158,7 +136,7 @@ namespace TradingExpertAdvisor.Managers
 
         private void SaveTradesToCandle(List<InternalTrade> trades)
         {
-            lock (_timeframeCandles)
+            lock (_symbolCandles)
             {
                 try
                 {
@@ -167,7 +145,7 @@ namespace TradingExpertAdvisor.Managers
                     if (!AreCandlesReady(symbol))
                         return;
 
-                    if (!_timeframeCandles.TryGetValue(symbol, out Dictionary<int, InternalCandle> timeframeCandles))
+                    if (!_symbolCandles.TryGetValue(symbol, out Dictionary<int, InternalCandle> timeframeCandles))
                         return;
 
                     foreach (var timeframeCandle in timeframeCandles)
@@ -184,14 +162,14 @@ namespace TradingExpertAdvisor.Managers
 
         private void SaveOrderbookToCandle(InternalOrderbook orderbook)
         {
-            lock (_timeframeCandles)
+            lock (_symbolCandles)
             {
                 try
                 {
                     if (!AreCandlesReady(orderbook.Symbol))
                         return;
 
-                    if (!_timeframeCandles.TryGetValue(orderbook.Symbol, out Dictionary<int, InternalCandle> timeframeCandles))
+                    if (!_symbolCandles.TryGetValue(orderbook.Symbol, out Dictionary<int, InternalCandle> timeframeCandles))
                         return;
 
                     foreach (var timeframeCandle in timeframeCandles)
@@ -204,6 +182,15 @@ namespace TradingExpertAdvisor.Managers
                     _logger.LogError(ex, "Failed save orderbook to candle.");
                 }
             }
+        }
+
+        private void InvokeCandleTransformedEvent(InternalCandle candle)
+        {
+            if (candle == null) return;
+
+            _logger.LogDebug($"Invoking candle transformed event with '{candle.Symbol}_{candle.Timeframe}' candle. ");
+
+            this.CandleTransformedEventHandler?.Invoke(this, new CandleTransformedEventArgs(candle));
         }
     }
 }

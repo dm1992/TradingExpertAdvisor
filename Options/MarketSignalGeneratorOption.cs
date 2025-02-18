@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TradingExpertAdvisor.Interfaces;
 
-namespace TradingExpertAdvisor.Managers.Options
+namespace TradingExpertAdvisor.Options
 {
     public class MarketSignalGeneratorOption : IOption
     {
@@ -13,7 +13,10 @@ namespace TradingExpertAdvisor.Managers.Options
 
         public string Dump()
         {
-            throw new NotImplementedException();
+            if (CandleCollectionTimeframeThresholds.IsNullOrEmpty())
+                return "N/A";
+
+            return $"CandleCollectionTimeframeThresholds: {string.Join(", ", CandleCollectionTimeframeThresholds.Select(kvp => $"{kvp.Key}: {kvp.Value}"))}";
         }
     }
 }

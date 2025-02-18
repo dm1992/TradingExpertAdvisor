@@ -1,40 +1,33 @@
 {
   "AppConfig": {
-    "Apis": [
+    "ExchangeApis": [
       {
-        "Api": "Bybit_Spot",
+        "ApiName": "Bybit_Spot",
         "ApiKey": "",
-        "ApiSecret": ""
+        "ApiSecret": "",
+        "Symbols": [ "BTCUSDT" ],
+        "Timeframes": [ 1, 5, 15, 30, 60 ],
+        "IsLive": true
       }
     ],
 
-    "CandleTransformer": {
-      "Symbols": [ "BTCUSDT" ],
-      "Timeframes": [ 1, 5, 15, 30, 60 ] //xxx ignore 1min
-    },
-
-    "CandleCollector": {
-      "Timeframes": [ 5, 15, 60 ]
-    },
-
     "MarketSignalGenerator": {
       "CandleCollectionTimeframeThresholds": {
-        "5": 2,
-        "15": 2,
-        "60": 2
+        "5": 1,
+        "15": 1,
+        "60": 1
       }
     },
 
     "MarketSignalValidator": {
       "MarketSignalTimeframeThresholds": {
-        "5": 3,
-        "15": 4,
-        "60": 2
+        "5": 1,
+        "15": 1,
+        "60": 1
       }
     },
 
     "TradeProcessorSimulator": {
-      "Symbols": [ "BTCUSDT" ],
       "TakeProfitAmount": 50,
       "StopLossAmount": 100,
       "ActiveTradesLimit": 1

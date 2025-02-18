@@ -6,26 +6,26 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TradingExpertAdvisor.Apis.BybitApi;
-using TradingExpertAdvisor.Apis.Options;
 using TradingExpertAdvisor.Interfaces;
+using TradingExpertAdvisor.Options;
 
 namespace TradingExpertAdvisor
 {
     public static class InstanceFactory
     {
 
-        public static IApiClient CreateApiClient(ILoggerFactory loggerFactory, ApiOption option)
+        public static IExchangeApiClient CreateExchangeApiClient(ILoggerFactory loggerFactory, ExchangeApiOption option)
         {
             if (option == null)
-                throw new Exception("Failed to create API client. API option not provided.");
+                throw new Exception("Failed to create exchange api client. Exchange api option not provided.");
 
-            switch(option.Api)
+            switch(option.ApiName)
             {
-                case Api.Bybit_Spot:
-                    return new BybitSpotApiClient(loggerFactory, option.ApiKey, option.ApiSecret, BybitEnvironment.Live);
+                case ExchangeApi.Bybit_Spot:
+                    return new BybitSpotApiClient(loggerFactory, option);
 
                 default:
-                    throw new Exception($"Not supported API '{option.Api}'.");
+                    throw new Exception($"Not supported exchange api '{option.ApiName}'.");
             }
         }
     }

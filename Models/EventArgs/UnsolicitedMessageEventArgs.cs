@@ -8,18 +8,11 @@ namespace TradingExpertAdvisor.Models.EventArgs
 {
     public class UnsolicitedMessageEventArgs : BaseEventArgs
     {
-        public MessageType Type { get; set; }
-        public string Message { get; set; }
+        public UnsolicitedMessage UnsolicitedMessage { get; set; }
 
-        public UnsolicitedMessageEventArgs(string message) : this(MessageType.Info, message)
+        public UnsolicitedMessageEventArgs(UnsolicitedMessage unsolicitedMessage)
         {
-
-        }
-
-        public UnsolicitedMessageEventArgs(MessageType type, string message)
-        {
-            Type = type;
-            Message = message;
+            this.UnsolicitedMessage = unsolicitedMessage;
         }
     }
 }

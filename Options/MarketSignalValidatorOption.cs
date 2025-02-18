@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TradingExpertAdvisor.Interfaces;
 
-namespace TradingExpertAdvisor.Managers.Options
+namespace TradingExpertAdvisor.Options
 {
     public class MarketSignalValidatorOption : IOption
     {
@@ -13,7 +13,10 @@ namespace TradingExpertAdvisor.Managers.Options
 
         public string Dump()
         {
-            throw new NotImplementedException();
+            if (MarketSignalTimeframeThresholds.IsNullOrEmpty())
+                return "N/A";
+
+            return $"MarketSignalTimeframeThresholds: {string.Join(", ", MarketSignalTimeframeThresholds.Select(kvp => $"{kvp.Key}: {kvp.Value}"))}";
         }
     }
 }

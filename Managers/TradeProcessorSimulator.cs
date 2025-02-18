@@ -1,33 +1,28 @@
 ﻿using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using TradingExpertAdvisor.Interfaces;
-using TradingExpertAdvisor.Managers.Options;
 using TradingExpertAdvisor.Models;
 using TradingExpertAdvisor.Models.EventArgs;
+using TradingExpertAdvisor.Options;
 
 namespace TradingExpertAdvisor.Managers
 {
     public class TradeProcessorSimulator : ITradeProcessor
     {
         private readonly ILogger<CandleCollector> _logger;
-        private readonly IMarketSignalGenerator _marketSignalGenerator;
-        private readonly IApiClient _apiClient;
+        private readonly IMarketSignalValidator _marketSignalValidator;
+        private readonly IExchangeApiClient _apiClient;
         private readonly TradeProcessorSimulatorOption _option;
 
         private bool _isInitialized;
         private List<SimulationTrade> _tradeBuffer;
 
         public TradeProcessorSimulator(ILoggerFactory loggerFactory,
-                                       IMarketSignalGenerator marketSignalGenerator,
-                                       IApiClient apiClient,
+                                       IMarketSignalValidator marketSignalValidator,
+                                       IExchangeApiClient apiClient,
                                        TradeProcessorSimulatorOption option)
         {
             _logger = loggerFactory.CreateLogger<CandleCollector>();
-            _marketSignalGenerator = marketSignalGenerator;
+            _marketSignalValidator = marketSignalValidator;
             _apiClient = apiClient;
             _option = option;
 
@@ -43,11 +38,8 @@ namespace TradingExpertAdvisor.Managers
 
                 _logger.LogInformation($"Initializing...");
 
-                if (!_apiClient.StartPriceReceiverAsync(_option.Symbols).Result)
-                    return false;
-
-                _marketSignalGenerator.MarketSignalEventHandler += MarketSignalEventHandler;
-                _apiClient.PriceReceivedEventHandler += PriceChangedEventHandler;
+                _marketSignalValidator.MarketSignalValidatedEventHandler += MarketSignalEventHandler;
+                _apiClient.PriceInfoReceivedEventHandler += PriceInfoReceivedEventHandler;
 
                 Task.Run(() => RunBalanceTrackerInThread());
 
@@ -67,34 +59,33 @@ namespace TradingExpertAdvisor.Managers
 
         private void MarketSignalEventHandler(object? sender, MarketSignalEventArgs e)
         {
-            //HandleMarketEvaluation(e.Symbol, e.DirectionType);
+            HandleMarketSignal(e.MarketSignalMetadata);
         }
 
-        private void PriceChangedEventHandler(object? sender, PriceReceivedEventArgs e)
+        private void PriceInfoReceivedEventHandler(object? sender, PriceInfoReceivedEventArgs e)
         {
-            HandlePriceChange(e.Symbol, e.Price);
+            HandlePriceInfo(e.PriceInfo);
         }
 
-        private void HandleMarketEvaluation(string symbol, MarketDirection directionType)
+        private void HandleMarketSignal(MarketSignalMetadata marketSignal)
         {
             lock (_tradeBuffer)
             {
-                if (directionType == MarketDirection.Unknown)
-                    return;
+                if (marketSignal == null) return;
 
-                decimal? lastPrice = _apiClient.GetLastPrice(symbol);
+                decimal? lastPrice = _apiClient.GetLastPrice(marketSignal.Symbol);
                 if (lastPrice == null)
                     return;
 
-                int activeTrades = _tradeBuffer.Where(x => x.Symbol == symbol && !x.HasCompleted).Count();
+                int activeTrades = _tradeBuffer.Where(x => x.Symbol == marketSignal.Symbol && !x.HasCompleted).Count();
                 if (activeTrades >= _option.ActiveTradesLimit)
                     return;
 
                 SimulationTrade trade = new SimulationTrade(_option.TakeProfitAmount, _option.StopLossAmount);
                 trade.Time = DateTime.Now;
-                trade.Symbol = symbol;
+                trade.Symbol = marketSignal.Symbol;
                 trade.EntryPrice = lastPrice.Value;
-                trade.TradeDirection = directionType == MarketDirection.Up ? TradeDirection.Buy : TradeDirection.Sell;
+                trade.TradeDirection = marketSignal.MarketDirection == MarketDirection.Up ? TradeDirection.Buy : TradeDirection.Sell;
                 trade.Volume = 1;
 
                 _logger.LogInformation($"<<<<< Opening '{trade.Symbol}' trade in direction '{trade.TradeDirection}' @ price '{trade.EntryPrice}' <<<<<");
@@ -103,11 +94,13 @@ namespace TradingExpertAdvisor.Managers
             }
         }
 
-        private void HandlePriceChange(string symbol, decimal price)
+        private void HandlePriceInfo(PriceInfo priceInfo)
         {
             lock (_tradeBuffer)
             {
-                var trades = _tradeBuffer.Where(x => x.Symbol == symbol && !x.HasCompleted);
+                if (priceInfo == null) return;
+
+                var trades = _tradeBuffer.Where(x => x.Symbol == priceInfo.Symbol && !x.HasCompleted);
 
                 if (trades.IsNullOrEmpty())
                     return;
@@ -116,30 +109,30 @@ namespace TradingExpertAdvisor.Managers
                 {
                     if (trade.TradeDirection == TradeDirection.Buy)
                     {
-                        if (price >= trade.TakeProfitPrice)
+                        if (priceInfo.Price >= trade.TakeProfitPrice)
                         {
-                            trade.Balance = price - trade.EntryPrice;
+                            trade.Balance = priceInfo.Price - trade.EntryPrice;
                         }
-                        else if (price <= trade.StopLossPrice)
+                        else if (priceInfo.Price <= trade.StopLossPrice)
                         {
-                            trade.Balance = -(trade.EntryPrice - price);
+                            trade.Balance = -(trade.EntryPrice - priceInfo.Price);
                         }
                     }
                     else if (trade.TradeDirection == TradeDirection.Sell)
                     {
-                        if (price <= trade.TakeProfitPrice)
+                        if (priceInfo.Price <= trade.TakeProfitPrice)
                         {
-                            trade.Balance = trade.EntryPrice - price;
+                            trade.Balance = trade.EntryPrice - priceInfo.Price;
                         }
-                        else if (price >= trade.StopLossPrice)
+                        else if (priceInfo.Price >= trade.StopLossPrice)
                         {
-                            trade.Balance = -(price - trade.EntryPrice);
+                            trade.Balance = -(priceInfo.Price - trade.EntryPrice);
                         }
                     }
 
                     if (trade.Balance.HasValue)
                     {
-                        _logger.LogInformation($"!!!!! '{symbol}' trade completed with balance '{trade.Balance.Value}'. Entry price: '{trade.EntryPrice}' and Exit price: '{trade.ExitPrice}' !!!!!");
+                        _logger.LogInformation($"!!!!! '{priceInfo.Symbol}' trade completed with balance '{trade.Balance.Value}'. Entry price: '{trade.EntryPrice}' and Exit price: '{trade.ExitPrice}' !!!!!");
                     }
                 }
             }

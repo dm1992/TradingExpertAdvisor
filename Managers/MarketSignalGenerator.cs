@@ -5,33 +5,33 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TradingExpertAdvisor.Interfaces;
-using TradingExpertAdvisor.Managers.Options;
 using TradingExpertAdvisor.Models;
 using TradingExpertAdvisor.Models.EventArgs;
+using TradingExpertAdvisor.Options;
 
 namespace TradingExpertAdvisor.Managers
 {
     public class MarketSignalGenerator : IMarketSignalGenerator
     {
-        public event EventHandler<MarketSignalEventArgs> MarketSignalEventHandler;
+        public event EventHandler<MarketSignalEventArgs> MarketSignalGeneratedEventHandler;
 
         private readonly ILogger<MarketSignalGenerator> _logger;
         private readonly ICandleCollector _candleCollector;
+        private readonly IExchangeApiClient _exchangeApiClient;
         private readonly MarketSignalGeneratorOption _option;
 
-        private bool _isInitialized;
-        private Dictionary<string, Dictionary<int, List<CandleCollection>>> _symbolCandleCollections;
-      
+        private Dictionary<string, Dictionary<int, List<CandleCollection>>> _symbolCandleCollections = new Dictionary<string, Dictionary<int, List<CandleCollection>>>();
+        private bool _isInitialized = false;
+
         public MarketSignalGenerator(ILoggerFactory loggerFactory,
                                      ICandleCollector candleCollector,
+                                     IExchangeApiClient exchangeApiClient,
                                      MarketSignalGeneratorOption option)
         {
             _logger = loggerFactory.CreateLogger<MarketSignalGenerator>();
             _candleCollector = candleCollector;
+            _exchangeApiClient = exchangeApiClient;
             _option = option;
-
-            _isInitialized = false;
-            _symbolCandleCollections = new Dictionary<string, Dictionary<int, List<CandleCollection>>>();
         }
 
         public bool Initialize()
@@ -89,13 +89,18 @@ namespace TradingExpertAdvisor.Managers
             }
         }
 
+        /// <summary>
+        /// Draft method for creating market signal. To be implemented furthermore.
+        /// </summary>
+        /// <param name="symbol"></param>
+        /// <param name="timeframe"></param>
         private void CreateMarketSignal(string symbol, int timeframe)
         {
             try
             {
                 if (!IsCandleCollectionTimeframeThresholdReached(symbol, timeframe))
                 {
-                    _logger.LogWarning($"Failed to create market signal. '{symbol}_{timeframe}' candle collection threashold not reached yet.");
+                    _logger.LogWarning($"Failed to create market signal. '{symbol}_{timeframe}' candle collection threashold not observed or not reached yet.");
                     return;
                 }
 
@@ -115,17 +120,32 @@ namespace TradingExpertAdvisor.Managers
                     return;
                 }
 
-                _logger.LogDebug($"Creating '{symbol}_{timeframe}' market signal with direction '{marketDirection}' and percentage '{marketDirectionPercentage}'%.");
+                decimal? currentSymbolPrice = _exchangeApiClient.GetLastPrice(symbol);
 
-                MarketSignalMetadata marketSignal = new MarketSignalMetadata(symbol, timeframe, marketDirection, marketDirectionPercentage);
+                if (currentSymbolPrice == null)
+                {
+                    _logger.LogInformation($"Unknown '{symbol}' current price, despite '{symbol}_{timeframe}' market signal with direction '{marketDirection}'. Do nothing...");
+                    return;
+                }
 
-                InvokeMarketSignalEvent(marketSignal);
+                _logger.LogDebug($"Creating '{symbol}_{timeframe}' market signal with direction '{marketDirection}' and percentage '{marketDirectionPercentage}'% @ price '{currentSymbolPrice.Value}'$.");
+
+                MarketSignalMetadata marketSignal = new MarketSignalMetadata();
+                marketSignal.Symbol = symbol;
+                marketSignal.Timeframe = timeframe;
+                marketSignal.Timestamp = DateTime.Now;
+                marketSignal.CurrentPrice = currentSymbolPrice.Value;
+                marketSignal.MarketDirection = marketDirection;
+                marketSignal.MarketDirectionPercentage = marketDirectionPercentage;
+                marketSignal.CandleCollections = new List<CandleCollection>(candleCollections);
+
+                InvokeMarketSignalGeneratedEvent(marketSignal);
 
                 FlushCandleCollection(symbol, timeframe);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to evaluate candle collection.");
+                _logger.LogError(ex, "Failed to create market signal.");
             }
         }
 
@@ -210,13 +230,14 @@ namespace TradingExpertAdvisor.Managers
             }
         }
 
-        private void InvokeMarketSignalEvent(MarketSignalMetadata marketSignalMetadata)
+        private void InvokeMarketSignalGeneratedEvent(MarketSignalMetadata marketSignal)
         {
-            if (marketSignalMetadata == null) return;
+            if (!Helpers.IsMarketSignalValid(marketSignal))
+                return;
 
-            _logger.LogDebug($"Invoking '{marketSignalMetadata.Symbol}_{marketSignalMetadata.Timeframe}' market signal event.");
+            _logger.LogDebug($"Invoking '{marketSignal.Symbol}_{marketSignal.Timeframe}' market signal generated event.");
 
-            this.MarketSignalEventHandler?.Invoke(this, new MarketSignalEventArgs(marketSignalMetadata));
+            this.MarketSignalGeneratedEventHandler?.Invoke(this, new MarketSignalEventArgs(marketSignal));
         }
     }
 }

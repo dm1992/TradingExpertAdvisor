@@ -1,19 +1,7 @@
-﻿using CryptoCom.Net.Enums;
-using CryptoExchange.Net.CommonObjects;
-using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection.Metadata;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
+﻿using Microsoft.Extensions.Logging;
 using TradingExpertAdvisor.Interfaces;
-using TradingExpertAdvisor.Managers.Options;
 using TradingExpertAdvisor.Models;
 using TradingExpertAdvisor.Models.EventArgs;
-using XT.Net.Objects.Models;
 
 namespace TradingExpertAdvisor.Managers
 {
@@ -23,21 +11,15 @@ namespace TradingExpertAdvisor.Managers
 
         private readonly ILogger<CandleCollector> _logger;
         private readonly ICandleTransformer _candleTransformer;
-        private readonly CandleCollectorOption _option;
 
-        private bool _isInitialized;
-        private Dictionary<string, Dictionary<int, List<InternalCandle>>> _symbolCandles;
+        private Dictionary<string, Dictionary<int, List<InternalCandle>>> _symbolCandles = new Dictionary<string, Dictionary<int, List<InternalCandle>>>();
+        private bool _isInitialized = false;
 
         public CandleCollector(ILoggerFactory loggerFactory,
-                               ICandleTransformer candleTransformer,
-                               CandleCollectorOption option)
+                               ICandleTransformer candleTransformer)
         {
             _logger = loggerFactory.CreateLogger<CandleCollector>();
             _candleTransformer = candleTransformer;
-            _option = option;
-
-            _isInitialized = false;
-            _symbolCandles = new Dictionary<string, Dictionary<int, List<InternalCandle>>>();
         }
 
 
@@ -47,7 +29,7 @@ namespace TradingExpertAdvisor.Managers
             {
                 if (_isInitialized) return true;
 
-                _logger.LogInformation($"Initializing with options '{_option.Dump()}'...");
+                _logger.LogInformation($"Initializing...");
 
                 _candleTransformer.CandleTransformedEventHandler += CandleTransformedEventHandler;
 
@@ -116,12 +98,6 @@ namespace TradingExpertAdvisor.Managers
             {
                 try
                 {
-                    if (!_option.Timeframes.Contains(timeframe))
-                    {
-                        _logger.LogWarning($"Not allowed to create '{symbol}_{timeframe}' candle collection.");
-                        return;
-                    }
-
                     _logger.LogDebug($">>>>> CREATING '{symbol}_{timeframe}' CANDLE COLLECTION <<<<<");
 
                     if (!_symbolCandles.TryGetValue(symbol, out Dictionary<int, List<InternalCandle>> symbolCandles) || symbolCandles.IsNullOrEmpty())
@@ -138,7 +114,7 @@ namespace TradingExpertAdvisor.Managers
                         {
                             _logger.LogWarning($"Found bigger timeframe '{kvp.Key}' than given timeframe '{timeframe}'. " +
                                                $"Will not create '{symbol}_{timeframe}' candle collection on timeframe '{kvp.Key}'.");
-                            continue;
+                            break;
                         }
 
                         int neededCandles = timeframe / kvp.Key;
@@ -175,7 +151,10 @@ namespace TradingExpertAdvisor.Managers
         private void InvokeCandleCollectedEvent(CandleCollection candleCollection)
         {
             if (!Helpers.IsCandleCollectionValid(candleCollection))
+            {
+                _logger.LogWarning($"'{candleCollection?.Symbol}_{candleCollection?.Timeframe}' candle collection invalid!");
                 return;
+            }
 
             _logger.LogDebug($"Invoking candle collected event with '{candleCollection.Symbol}_{candleCollection.Timeframe}' candle. ");
 

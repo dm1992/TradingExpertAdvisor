@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TradingExpertAdvisor.Interfaces;
 
-namespace TradingExpertAdvisor.Managers.Options
+namespace TradingExpertAdvisor.Options
 {
     public class TradeProcessorOption : IOption
     {

@@ -1,4 +1,5 @@
 ﻿using Bybit.Net.Enums;
+using Org.BouncyCastle.Crypto.Tls;
 using System;
 using System.Collections.Generic;
 using System.Linq;

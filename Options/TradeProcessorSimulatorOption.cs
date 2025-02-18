@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TradingExpertAdvisor.Managers.Options
+namespace TradingExpertAdvisor.Options
 {
     public class TradeProcessorSimulatorOption : TradeProcessorOption
     {

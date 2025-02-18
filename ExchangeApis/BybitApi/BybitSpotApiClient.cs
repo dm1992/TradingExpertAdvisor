@@ -8,38 +8,35 @@ using TradingExpertAdvisor.Models.EventArgs;
 using TradingExpertAdvisor.Models;
 using TradingExpertAdvisor.Interfaces;
 using Microsoft.Extensions.Options;
-using TradingExpertAdvisor.Apis.Options;
 using System.Diagnostics;
 using CryptoExchange.Net.CommonObjects;
 using Newtonsoft.Json;
+using TradingExpertAdvisor.Options;
 
 namespace TradingExpertAdvisor.Apis.BybitApi
 {
-    public class BybitSpotApiClient : BybitBaseApiClient, IApiClient
+    public class BybitSpotApiClient : BybitBaseApiClient, IExchangeApiClient
     {
         private readonly ILogger<BybitSpotApiClient> _logger;
 
         public event EventHandler<TradeReceivedEventArgs> TradeReceivedEventHandler;
         public event EventHandler<OrderbookReceivedEventArgs> OrderbookReceivedEventHandler;
         public event EventHandler<CandleReceivedEventArgs> CandleReceivedEventHandler;
-        public event EventHandler<PriceReceivedEventArgs> PriceReceivedEventHandler;
+        public event EventHandler<PriceInfoReceivedEventArgs> PriceInfoReceivedEventHandler;
         public event EventHandler<UnsolicitedMessageEventArgs> UnsolicitedMessageEventHandler;
 
-        private Dictionary<string, InternalOrderbook> _orderbooks;
-        private Dictionary<string, decimal> _prices;
+        private Dictionary<string, InternalOrderbook> _orderbooks = new Dictionary<string, InternalOrderbook>();
+        private Dictionary<string, decimal> _prices = new Dictionary<string, decimal>();
+        private bool _isInitialized = false;
 
-        public BybitSpotApiClient(ILoggerFactory loggerFactory, string apiKey, string apiSecret, BybitEnvironment environment) 
-        : base(apiKey, apiSecret, environment)
+        public BybitSpotApiClient(ILoggerFactory loggerFactory, ExchangeApiOption option) : base(option)
         {
             _logger = loggerFactory.CreateLogger<BybitSpotApiClient>();
-
-            _orderbooks = new Dictionary<string, InternalOrderbook>();
-            _prices = new Dictionary<string, decimal>();
         }
 
-        public Api GetApiName()
+        public ExchangeApiOption GetOption()
         {
-            return Api.Bybit_Spot;
+            return _option;
         }
 
         public decimal? GetLastPrice(string symbol)
@@ -50,13 +47,47 @@ namespace TradingExpertAdvisor.Apis.BybitApi
             return price;
         }
 
-        public async Task<bool> StartTradeReceiverAsync(IEnumerable<string> symbols)
+        public async Task<bool> Initialize()
         {
             try
             {
-                _logger.LogDebug($"Starting trade receiver on symbols: '{String.Join(",", symbols)}'...");
 
-                CallResult<UpdateSubscription> response = await _socketClient.V5SpotApi.SubscribeToTradeUpdatesAsync(symbols, TradeReceiver);
+                if (_isInitialized) return true;
+
+                _logger.LogInformation($"Initializing with options '{_option.Dump()}'...");
+
+                if (!await StartTradeReceiverAsync())
+                    return false;
+
+                if (!await StartOrderbookReceiverAsync())
+                    return false;
+
+                if (!await StartCandleReceiverAsync())
+                    return false;
+
+                if (!await StartPriceReceiverAsync())
+                    return false;
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to initialize.");
+                return false;
+            }
+        }
+
+
+
+        #region Exchange api topic receivers
+
+        private async Task<bool> StartTradeReceiverAsync()
+        {
+            try
+            {
+                _logger.LogDebug($"Starting trade receiver on symbols: '{String.Join(",", _option.Symbols)}'...");
+
+                CallResult<UpdateSubscription> response = await _socketClient.V5SpotApi.SubscribeToTradeUpdatesAsync(_option.Symbols, TradeReceiver);
 
                 if (!response.GetResultOrError(out var updateSubscription, out var error))
                 {
@@ -77,13 +108,13 @@ namespace TradingExpertAdvisor.Apis.BybitApi
             }
         }
 
-        public async Task<bool> StartOrderbookReceiverAsync(IEnumerable<string> symbols)
+        private async Task<bool> StartOrderbookReceiverAsync()
         {
             try
             {
-                _logger.LogDebug($"Starting orderbook receiver on symbols: '{String.Join(",", symbols)}'...");
+                _logger.LogDebug($"Starting orderbook receiver on symbols: '{String.Join(",", _option.Symbols)}'...");
 
-                CallResult<UpdateSubscription> response = await _socketClient.V5SpotApi.SubscribeToOrderbookUpdatesAsync(symbols, depth: 50, OrderbookReceiver);
+                CallResult<UpdateSubscription> response = await _socketClient.V5SpotApi.SubscribeToOrderbookUpdatesAsync(_option.Symbols, depth: 50, OrderbookReceiver);
 
                 if (!response.GetResultOrError(out var updateSubscription, out var error))
                 {
@@ -100,13 +131,13 @@ namespace TradingExpertAdvisor.Apis.BybitApi
             }
         }
 
-        public async Task<bool> StartCandleReceiverAsync(IEnumerable<string> symbols, IEnumerable<int> timeframes)
+        private async Task<bool> StartCandleReceiverAsync()
         {
             try
             {
-                _logger.LogDebug($"Starting candle receiver on symbols: '{String.Join(",", symbols)}' and timeframes: '{String.Join(",", timeframes)}'...");
+                _logger.LogDebug($"Starting candle receiver on symbols: '{String.Join(",", _option.Symbols)}' and timeframes: '{String.Join(",", _option.Timeframes)}'...");
 
-                foreach (int timeframe in timeframes)
+                foreach (int timeframe in _option.Timeframes)
                 {
                     KlineInterval? klineInterval = timeframe.GetKlineInterval();
 
@@ -116,7 +147,7 @@ namespace TradingExpertAdvisor.Apis.BybitApi
                         return false;
                     }
 
-                    CallResult<UpdateSubscription> response = await _socketClient.V5SpotApi.SubscribeToKlineUpdatesAsync(symbols, klineInterval.Value, CandleReceiver);
+                    CallResult<UpdateSubscription> response = await _socketClient.V5SpotApi.SubscribeToKlineUpdatesAsync(_option.Symbols, klineInterval.Value, CandleReceiver);
 
                     if (!response.GetResultOrError(out var updateSubscription, out var error))
                     {
@@ -134,13 +165,13 @@ namespace TradingExpertAdvisor.Apis.BybitApi
             }
         }
 
-        public async Task<bool> StartPriceReceiverAsync(IEnumerable<string> symbols)
+        private async Task<bool> StartPriceReceiverAsync()
         {
             try
             {
-                _logger.LogDebug($"Starting price receiver on symbols: '{String.Join(",", symbols)}'...");
+                _logger.LogDebug($"Starting price receiver on symbols: '{String.Join(",", _option.Symbols)}'...");
 
-                CallResult<UpdateSubscription> response = await _socketClient.V5SpotApi.SubscribeToTickerUpdatesAsync(symbols, PriceReceiver);
+                CallResult<UpdateSubscription> response = await _socketClient.V5SpotApi.SubscribeToTickerUpdatesAsync(_option.Symbols, PriceReceiver);
 
                 if (!response.GetResultOrError(out var updateSubscription, out var error))
                 {
@@ -156,24 +187,6 @@ namespace TradingExpertAdvisor.Apis.BybitApi
                 return false;
             }
         }
-
-        private void ConnectionRestored(TimeSpan obj)
-        {
-            InvokeUnsolicitedMesageEvent(MessageType.Info, "BybitSpotApiClient connection restored.");
-        }
-
-        private void ConnectionLost()
-        {
-            InvokeUnsolicitedMesageEvent(MessageType.Error, "BybitSpotApiClient connection lost.");
-        }
-
-        private void ConnectionClosed()
-        {
-            InvokeUnsolicitedMesageEvent(MessageType.Warning, "BybitSpotApiClient connection closed.");
-        }
-
-
-        #region API topics receivers
 
         private void TradeReceiver(DataEvent<IEnumerable<BybitTrade>> trades)
         {
@@ -304,8 +317,8 @@ namespace TradingExpertAdvisor.Apis.BybitApi
                 else if (price != ticker.Data.LastPrice)
                 {
                     _prices[ticker.Symbol] = ticker.Data.LastPrice;
-
-                    InvokePriceReceivedEvent(ticker.Symbol, ticker.Data.LastPrice);
+      
+                    InvokePriceInfoReceivedEvent(new PriceInfo(ticker.Symbol, ticker.Data.LastPrice));
                 }
             }
             catch (Exception ex)
@@ -314,11 +327,26 @@ namespace TradingExpertAdvisor.Apis.BybitApi
             }
         }
 
+        private void ConnectionRestored(TimeSpan obj)
+        {
+            InvokeUnsolicitedMesageEvent(new UnsolicitedMessage(MessageType.Info, "BybitSpotApiClient connection restored."));
+        }
+
+        private void ConnectionLost()
+        {
+            InvokeUnsolicitedMesageEvent(new UnsolicitedMessage(MessageType.Error, "BybitSpotApiClient connection lost."));
+        }
+
+        private void ConnectionClosed()
+        {
+            InvokeUnsolicitedMesageEvent(new UnsolicitedMessage(MessageType.Warning, "BybitSpotApiClient connection closed."));
+        }
+
         #endregion
 
 
 
-        #region Event handlers
+        #region Exchange api event handlers
 
         public void InvokeTradeReceivedEvent(List<InternalTrade> trades)
         {
@@ -335,14 +363,14 @@ namespace TradingExpertAdvisor.Apis.BybitApi
             this.CandleReceivedEventHandler?.Invoke(this, new CandleReceivedEventArgs(candle));
         }
 
-        public void InvokePriceReceivedEvent(string symbol, decimal price)
+        public void InvokePriceInfoReceivedEvent(PriceInfo price)
         {
-            this.PriceReceivedEventHandler?.Invoke(this, new PriceReceivedEventArgs(symbol, price));
+            this.PriceInfoReceivedEventHandler?.Invoke(this, new PriceInfoReceivedEventArgs(price));
         }
 
-        public void InvokeUnsolicitedMesageEvent(MessageType type, string message)
+        public void InvokeUnsolicitedMesageEvent(UnsolicitedMessage unsolicitedMessage)
         {
-            this.UnsolicitedMessageEventHandler?.Invoke(this, new UnsolicitedMessageEventArgs(type, message));
+            this.UnsolicitedMessageEventHandler?.Invoke(this, new UnsolicitedMessageEventArgs(unsolicitedMessage));
         }
 
         #endregion

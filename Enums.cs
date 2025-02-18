@@ -19,7 +19,7 @@ namespace TradingExpertAdvisor
         Error = 2
     }
 
-    public enum Api
+    public enum ExchangeApi
     {
         Bybit_Spot = 1
     }

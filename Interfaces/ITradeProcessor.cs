@@ -10,5 +10,7 @@ namespace TradingExpertAdvisor.Interfaces
     public interface ITradeProcessor : IManager
     {
         public bool OpenTrade();
+
+        //xxx other methods
     }
 }

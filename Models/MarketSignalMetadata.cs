@@ -11,16 +11,9 @@ namespace TradingExpertAdvisor.Models
         public string Symbol { get; set; }
         public int Timeframe { get; set; }
         public DateTime Timestamp { get; set; }
+        public decimal CurrentPrice { get; set; }
         public MarketDirection MarketDirection { get; set; }
         public decimal MarketDirectionPercentage { get; set; }
-
-        public MarketSignalMetadata(string symbol, int timeframe, MarketDirection marketDirection, decimal marketDirectionPercentage)
-        {
-            this.Symbol = symbol;
-            this.Timeframe = timeframe;
-            this.MarketDirection = marketDirection;
-            this.MarketDirectionPercentage = marketDirectionPercentage;
-            this.Timestamp = DateTime.Now;
-        }
+        public List<CandleCollection> CandleCollections { get; set; }
     }
 }

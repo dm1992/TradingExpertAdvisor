@@ -16,19 +16,10 @@ namespace TradingExpertAdvisor.Models
     // strong COMPONENT and vice versa weak component (volume, price...)
     public class CandleCollection
     {
-        /// <summary>
-        /// Main candle like 5 minutes candle.
-        /// </summary>
         public InternalCandle MainCandle { get; set; }
 
-        /// <summary>
-        /// Sub candles like 5 times 1 minute candle.
-        /// </summary>
         public Dictionary<int, List<InternalCandle>> TimeframeSubCandles { get; set; } = new Dictionary<int, List<InternalCandle>>();
 
-        /// <summary>
-        /// Determined by main candle.
-        /// </summary>
         public string Symbol
         {
             get
@@ -37,9 +28,6 @@ namespace TradingExpertAdvisor.Models
             }
         }
 
-        /// <summary>
-        /// Determined by main candle.
-        /// </summary>
         public int Timeframe
         {
             get
@@ -48,9 +36,6 @@ namespace TradingExpertAdvisor.Models
             }
         }
 
-        /// <summary>
-        /// Determined by main candle.
-        /// </summary>
         public InternalCandleDirection DirectionType
         {
             get
@@ -59,9 +44,6 @@ namespace TradingExpertAdvisor.Models
             }
         }
 
-        /// <summary>
-        /// Ignoring candle metrics and using all timeframe sub candles.
-        /// </summary>
         public decimal DirectionTypeGeneralPercentage 
         { 
             get 

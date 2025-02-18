@@ -20,19 +20,97 @@ namespace TradingExpertAdvisor.Models
         public bool IsClosed { get; set; }
         public List<InternalTrade> Trades { get; set; } = new List<InternalTrade>();
         public InternalOrderbook Orderbook { get; set; }
-        public decimal ActiveTotalVolume { get { return GetActiveTotalVolume(); } }
-        public decimal ActiveBuyVolume { get {  return GetActiveBuyVolume(); } }
-        public decimal ActiveSellVolume { get { return GetActiveSellVolume(); } }
-        public decimal ActiveBuyVolumePercentage { get { return GetActiveBuyVolumePercentage(); } }
-        public decimal ActiveSellVolumePercentage { get { return GetActiveSellVolumePercentage(); } }
-        public decimal PassiveBuyVolumePercentage { get { return GetPassiveBuyVolumePercentage(); } }
-        public decimal PassiveSellVolumePercentage { get { return GetPassiveSellVolumePercentage(); } }
-        public decimal OpenPrice { get { return GetOpenPrice(); } }
-        public decimal HighPrice { get { return GetHighPrice(); } }
-        public decimal LowPrice { get { return GetLowPrice(); } }
-        public decimal ClosePrice { get { return GetClosePrice(); } }
-        public decimal DeltaPrice { get { return GetDeltaPrice(); } }
-        public InternalCandleDirection DirectionType { get { return GetDirectionType(); } }
+        public decimal ActiveTotalVolume 
+        { 
+            get 
+            { 
+                return GetActiveTotalVolume(); 
+            } 
+        }
+        public decimal ActiveBuyVolume 
+        { 
+            get 
+            {  
+                return GetActiveBuyVolume(); 
+            } 
+        }
+        public decimal ActiveSellVolume 
+        { 
+            get 
+            { 
+                return GetActiveSellVolume(); 
+            } 
+        }
+        public decimal ActiveBuyVolumePercentage 
+        { 
+            get 
+            { 
+                return GetActiveBuyVolumePercentage(); 
+            } 
+        }
+        public decimal ActiveSellVolumePercentage 
+        { 
+            get 
+            { 
+                return GetActiveSellVolumePercentage(); 
+            } 
+        }
+        public decimal PassiveBuyVolumePercentage 
+        { 
+            get 
+            { 
+                return GetPassiveBuyVolumePercentage(); 
+            } 
+        }
+        public decimal PassiveSellVolumePercentage 
+        { 
+            get 
+            { 
+                return GetPassiveSellVolumePercentage(); 
+            } 
+        }
+        public decimal OpenPrice 
+        { 
+            get 
+            { 
+                return GetOpenPrice(); 
+            } 
+        }
+        public decimal HighPrice 
+        { 
+            get 
+            { 
+                return GetHighPrice(); 
+            } 
+        }
+        public decimal LowPrice 
+        { 
+            get 
+            { 
+                return GetLowPrice(); 
+            } 
+        }
+        public decimal ClosePrice 
+        { 
+            get 
+            { 
+                return GetClosePrice(); 
+            } 
+        }
+        public decimal DeltaPrice 
+        { 
+            get 
+            { 
+                return GetDeltaPrice(); 
+            } 
+        }
+        public InternalCandleDirection DirectionType 
+        { 
+            get 
+            { 
+                return GetDirectionType(); 
+            } 
+        }
 
         public string Dump()
         {

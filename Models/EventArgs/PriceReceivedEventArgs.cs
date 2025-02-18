@@ -6,13 +6,13 @@ using System.Threading.Tasks;
 
 namespace TradingExpertAdvisor.Models.EventArgs
 {
-    public class PriceReceivedEventArgs : BaseEventArgs
+    public class PriceInfoReceivedEventArgs : BaseEventArgs
     {
-        public decimal Price { get; set; }
+        public PriceInfo PriceInfo { get; set; }
 
-        public PriceReceivedEventArgs(string symbol, decimal price) : base(symbol)
+        public PriceInfoReceivedEventArgs(PriceInfo priceInfo)
         {
-            this.Price = price;
+            this.PriceInfo = priceInfo;
         }
     }
 }

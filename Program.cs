@@ -3,10 +3,9 @@ using Microsoft.Extensions.Logging;
 using NLog.Extensions.Logging;
 using System.Reflection;
 using TradingExpertAdvisor;
-using TradingExpertAdvisor.Apis.Options;
 using TradingExpertAdvisor.Interfaces;
 using TradingExpertAdvisor.Managers;
-using TradingExpertAdvisor.Managers.Options;
+using TradingExpertAdvisor.Options;
 
 ILoggerFactory _loggerFactory = null;
 ILogger _logger = null;
@@ -43,23 +42,25 @@ try
     if (configuration == null || configuration.AsEnumerable().IsNullOrEmpty())
         throw new ArgumentException($"Application missing '{args[0]}' configuration.", "ID configuration");
 
-    List<ApiOption> apiOptions = configuration.GetSection("AppConfig:Apis").Get<List<ApiOption>>();
-    foreach (var apiOption in apiOptions)
-    {
-        IApiClient apiClient = InstanceFactory.CreateApiClient(_loggerFactory, apiOption);
+    List<ExchangeApiOption> exchangeApiOptions = configuration.GetSection("AppConfig:ExchangeApis").Get<List<ExchangeApiOption>>();
 
-        CandleTransformerOption candleTransformerOption = new CandleTransformerOption();
-        configuration.GetSection("AppConfig:CandleTransformer").Bind(candleTransformerOption);
-        CandleTransformer candleTransformer = new CandleTransformer(_loggerFactory, apiClient, candleTransformerOption);
+    foreach (var exchangeApiOption in exchangeApiOptions)
+    {
+        IExchangeApiClient exchangeApiClient = InstanceFactory.CreateExchangeApiClient(_loggerFactory, exchangeApiOption);
+
+        if (!exchangeApiClient.Initialize().Result)
+        {
+            throw new Exception($"Failed to setup api '{exchangeApiClient.GetType().Name}'.");
+        }
+
+        CandleTransformer candleTransformer = new CandleTransformer(_loggerFactory, exchangeApiClient);
 
         if (!candleTransformer.Initialize())
         {
             throw new Exception("Failed to start candle transformer.");
         }
 
-        CandleCollectorOption candleCollectorOption = new CandleCollectorOption();
-        configuration.GetSection("AppConfig:CandleCollector").Bind(candleCollectorOption);
-        CandleCollector candleCollector = new CandleCollector(_loggerFactory, candleTransformer, candleCollectorOption);
+        CandleCollector candleCollector = new CandleCollector(_loggerFactory, candleTransformer);
 
         if (!candleCollector.Initialize())
         {
@@ -68,17 +69,26 @@ try
 
         MarketSignalGeneratorOption marketSignalGeneratorOption = new MarketSignalGeneratorOption();
         configuration.GetSection("AppConfig:MarketSignalGenerator").Bind(marketSignalGeneratorOption);
-        MarketSignalGenerator marketSignalGenerator = new MarketSignalGenerator(_loggerFactory, candleCollector, marketSignalGeneratorOption);
+        MarketSignalGenerator marketSignalGenerator = new MarketSignalGenerator(_loggerFactory, candleCollector, exchangeApiClient, marketSignalGeneratorOption);
 
         if (!marketSignalGenerator.Initialize())
         {
             throw new Exception("Failed to start market signal generator.");
         }
 
+        MarketSignalValidatorOption marketSignalValidatorOption = new MarketSignalValidatorOption();
+        configuration.GetSection("AppConfig:MarketSignalValidator").Bind(marketSignalValidatorOption);
+        MarketSignalValidator marketSignalValidator = new MarketSignalValidator(_loggerFactory, marketSignalGenerator, exchangeApiClient, marketSignalValidatorOption);
+
+        if (!marketSignalValidator.Initialize())
+        {
+            throw new Exception("Failed to start market signal validator.");
+        }
+
         TradeProcessorSimulatorOption tradeProcessorSimulatorOption = new TradeProcessorSimulatorOption();
         configuration.GetSection("AppConfig:TradeProcessorSimulator").Bind(tradeProcessorSimulatorOption);
 
-        TradeProcessorSimulator tradeProcessorSimulator = new TradeProcessorSimulator(_loggerFactory, marketSignalGenerator, apiClient, tradeProcessorSimulatorOption);
+        TradeProcessorSimulator tradeProcessorSimulator = new TradeProcessorSimulator(_loggerFactory, marketSignalValidator, exchangeApiClient, tradeProcessorSimulatorOption);
 
         if (!tradeProcessorSimulator.Initialize())
         {

@@ -9,6 +9,6 @@ namespace TradingExpertAdvisor.Interfaces
 {
     public interface IMarketSignalGenerator : IManager
     {
-        event EventHandler<MarketSignalEventArgs> MarketSignalEventHandler;
+        event EventHandler<MarketSignalEventArgs> MarketSignalGeneratedEventHandler;
     }
 }

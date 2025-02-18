@@ -15,11 +15,5 @@ namespace TradingExpertAdvisor.Models.EventArgs
         {
             this.CreatedAt = DateTime.Now;
         }
-
-        public BaseEventArgs (string symbol)
-        {
-            this.Symbol = symbol;
-            this.CreatedAt = DateTime.Now;
-        }
     }
 }
