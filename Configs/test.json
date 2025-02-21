@@ -6,26 +6,10 @@
         "ApiKey": "",
         "ApiSecret": "",
         "Symbols": [ "BTCUSDT" ],
-        "Timeframes": [ 1, 5, 15, 30, 60 ],
+        "Timeframes": [ 1, 5, 15], //[ 1, 5, 15, 30, 60 ]
         "IsLive": true
       }
     ],
-
-    "MarketSignalGenerator": {
-      "CandleCollectionTimeframeThresholds": {
-        "5": 1,
-        "15": 1,
-        "60": 1
-      }
-    },
-
-    "MarketSignalValidator": {
-      "MarketSignalTimeframeThresholds": {
-        "5": 1,
-        "15": 1,
-        "60": 1
-      }
-    },
 
     "TradeProcessorSimulator": {
       "TakeProfitAmount": 50,

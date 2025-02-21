@@ -1,7 +1,9 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using CryptoCom.Net.Enums;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
 using TradingExpertAdvisor.Interfaces;
@@ -16,22 +18,19 @@ namespace TradingExpertAdvisor.Managers
         public event EventHandler<MarketSignalEventArgs> MarketSignalGeneratedEventHandler;
 
         private readonly ILogger<MarketSignalGenerator> _logger;
-        private readonly ICandleCollector _candleCollector;
+        private readonly ICandleTransformer _candleTransformer;
         private readonly IExchangeApiClient _exchangeApiClient;
-        private readonly MarketSignalGeneratorOption _option;
 
-        private Dictionary<string, Dictionary<int, List<CandleCollection>>> _symbolCandleCollections = new Dictionary<string, Dictionary<int, List<CandleCollection>>>();
+        private Dictionary<string, Dictionary<int, List<InternalCandle>>> _symbolCandles = new Dictionary<string, Dictionary<int, List<InternalCandle>>>();
         private bool _isInitialized = false;
 
         public MarketSignalGenerator(ILoggerFactory loggerFactory,
-                                     ICandleCollector candleCollector,
-                                     IExchangeApiClient exchangeApiClient,
-                                     MarketSignalGeneratorOption option)
+                                     ICandleTransformer candleTransformer,
+                                     IExchangeApiClient exchangeApiClient)
         {
             _logger = loggerFactory.CreateLogger<MarketSignalGenerator>();
-            _candleCollector = candleCollector;
+            _candleTransformer = candleTransformer;
             _exchangeApiClient = exchangeApiClient;
-            _option = option;
         }
 
         public bool Initialize()
@@ -40,9 +39,9 @@ namespace TradingExpertAdvisor.Managers
             {
                 if (_isInitialized) return true;
 
-                _logger.LogInformation($"Initializing with options '{_option.Dump()}'...");
+                _logger.LogInformation($"Initializing...");
 
-                _candleCollector.CandleCollectedEventHandler += CandleCollectedEventHandler;
+                _candleTransformer.CandleTransformedEventHandler += CandleTransformedEventHandler;
 
                 return _isInitialized = true;
             }
@@ -53,189 +52,220 @@ namespace TradingExpertAdvisor.Managers
             }
         }
 
-        private void CandleCollectedEventHandler(object? sender, CandleCollectedEventArgs e)
+        private void CandleTransformedEventHandler(object? sender, CandleTransformedEventArgs e)
         {
-            SaveCandleCollection(e.CandleCollection);
+            SaveCandle(e.Candle);
 
-            CreateMarketSignal(e.CandleCollection.Symbol, e.CandleCollection.Timeframe);
+            InvokeMarketEntry(e.Candle.Symbol);
         }
 
-        private void SaveCandleCollection(CandleCollection candleCollection)
+        private void SaveCandle(InternalCandle candle)
         {
             try
             {
-                _logger.LogDebug($"Saving '{candleCollection.Symbol}_{candleCollection.Timeframe}' candle collection.");
+                _logger.LogDebug($"Saving '{candle.Symbol}_{candle.Timeframe}' candle.");
 
 
-                if (!_symbolCandleCollections.TryGetValue(candleCollection.Symbol, out Dictionary<int, List<CandleCollection>> symbolCandleCollections))
+                if (!_symbolCandles.TryGetValue(candle.Symbol, out Dictionary<int, List<InternalCandle>> symbolCandles))
                 {
-                    symbolCandleCollections = new Dictionary<int, List<CandleCollection>>();
-                    symbolCandleCollections.Add(candleCollection.Timeframe, new List<CandleCollection>() { candleCollection });
+                    symbolCandles = new Dictionary<int, List<InternalCandle>>();
+                    symbolCandles.Add(candle.Timeframe, new List<InternalCandle>() { candle });
 
-                    _symbolCandleCollections.Add(candleCollection.Symbol, symbolCandleCollections);
+                    _symbolCandles.Add(candle.Symbol, symbolCandles);
                 }
-                else if (!symbolCandleCollections.TryGetValue(candleCollection.Timeframe, out List<CandleCollection> timeframeCandleCollections))
+                else if (!symbolCandles.TryGetValue(candle.Timeframe, out List<InternalCandle> candles))
                 {
-                    symbolCandleCollections.Add(candleCollection.Timeframe, new List<CandleCollection>() { candleCollection });
+                    symbolCandles.Add(candle.Timeframe, new List<InternalCandle>() { candle });
                 }
                 else
                 {
-                    timeframeCandleCollections.Add(candleCollection); //xxx when to remove them, if any?
+                    candles.Add(candle); //xxx when to remove them, if any?
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to save candle collection.");
+                _logger.LogError(ex, "Failed to save candle.");
             }
         }
 
-        /// <summary>
-        /// Draft method for creating market signal. To be implemented furthermore.
-        /// </summary>
-        /// <param name="symbol"></param>
-        /// <param name="timeframe"></param>
-        private void CreateMarketSignal(string symbol, int timeframe)
+        private void InvokeMarketEntry(string symbol)
         {
             try
             {
-                if (!IsCandleCollectionTimeframeThresholdReached(symbol, timeframe))
+                if (!IsEnoughMarketData(symbol))
                 {
-                    _logger.LogWarning($"Failed to create market signal. '{symbol}_{timeframe}' candle collection threashold not observed or not reached yet.");
+                    _logger.LogWarning($"Failed to invoke '{symbol}' market entry. Not enough '{symbol}' market data.");
                     return;
                 }
 
-                List<CandleCollection> candleCollections = GetCandleCollections(symbol, timeframe);
+                CreateMarketSignal(symbol);
 
-                if (candleCollections.IsNullOrEmpty())
-                {
-                    _logger.LogError($"Failed to create market signal. '{symbol}_{timeframe}' candle collections are empty, very strange because its threshold is reached!");
-                    return;
-                }
-
-                MarketDirection marketDirection = GetCandleCollectionsMarketDirection(candleCollections, out decimal marketDirectionPercentage);
-
-                if (marketDirection == MarketDirection.Unknown)
-                {
-                    _logger.LogInformation($"Unknown market direction on '{symbol}_{timeframe}' candle collection. Do nothing...");
-                    return;
-                }
-
-                decimal? currentSymbolPrice = _exchangeApiClient.GetLastPrice(symbol);
-
-                if (currentSymbolPrice == null)
-                {
-                    _logger.LogInformation($"Unknown '{symbol}' current price, despite '{symbol}_{timeframe}' market signal with direction '{marketDirection}'. Do nothing...");
-                    return;
-                }
-
-                _logger.LogDebug($"Creating '{symbol}_{timeframe}' market signal with direction '{marketDirection}' and percentage '{marketDirectionPercentage}'% @ price '{currentSymbolPrice.Value}'$.");
-
-                MarketSignalMetadata marketSignal = new MarketSignalMetadata();
-                marketSignal.Symbol = symbol;
-                marketSignal.Timeframe = timeframe;
-                marketSignal.Timestamp = DateTime.Now;
-                marketSignal.CurrentPrice = currentSymbolPrice.Value;
-                marketSignal.MarketDirection = marketDirection;
-                marketSignal.MarketDirectionPercentage = marketDirectionPercentage;
-                marketSignal.CandleCollections = new List<CandleCollection>(candleCollections);
-
-                InvokeMarketSignalGeneratedEvent(marketSignal);
-
-                FlushCandleCollection(symbol, timeframe);
+                FlushMarketData(symbol); // start over again
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to create market signal.");
+                _logger.LogError(ex, "Failed to invoke market entry.");
             }
         }
 
-        private bool IsCandleCollectionTimeframeThresholdReached(string symbol, int timeframe)
+        private bool IsEnoughMarketData(string symbol)
         {
-            if (_symbolCandleCollections.TryGetValue(symbol, out Dictionary<int, List<CandleCollection>> symbolCandleCollections))
+            if (!_symbolCandles.TryGetValue(symbol, out Dictionary<int, List<InternalCandle>> symbolCandles))
             {
-                if (symbolCandleCollections.TryGetValue(timeframe, out List<CandleCollection> timeframeCandleCollections)) 
+                _logger.LogError($"No '{symbol}' candles.");
+                return false;
+            }
+
+            int maxCandleTimeframe = _exchangeApiClient.GetOption().Timeframes.Max();
+
+            if (!symbolCandles.TryGetValue(maxCandleTimeframe, out _))
+            {
+                _logger.LogWarning($"'{symbol}_{maxCandleTimeframe}' candle not present yet.");
+                return false;
+            }
+
+            return true;
+        }
+
+        private void FlushMarketData(string symbol)
+        {
+            if (!_symbolCandles.TryGetValue(symbol, out Dictionary<int, List<InternalCandle>> symbolCandles))
+            {
+                _logger.LogError($"No '{symbol}' candles.");
+                return;
+            }
+
+            _logger.LogDebug($"Flushing '{symbol}' market data of total '{symbolCandles.Values.Count}' entries.");
+
+            symbolCandles.Clear();
+        }
+
+        private void CreateMarketSignal(string symbol)
+        {
+            Dictionary<int, InternalCandleDirectionInfo> timeframeCandleDirectionInfos = GetTimeframeCandleDirectionInfos(symbol);
+
+            MarketDirection marketDirection = EvaluateTimeframeCandleDirectionInfos(timeframeCandleDirectionInfos);
+            
+            if (marketDirection == MarketDirection.Unknown)
+            {
+                _logger.LogError($"Failed to create '{symbol}' market signal.");
+                return;
+            }
+
+            decimal? currentSymbolPrice = _exchangeApiClient.GetLastPrice(symbol);
+
+            if (currentSymbolPrice == null)
+            {
+                _logger.LogError($"Failed to create '{symbol}' market signal. Unknown '{symbol}' current price.");
+                return;
+            }
+
+            _logger.LogDebug($">>> Creating '{symbol}' market signal with direction '{marketDirection}' @ price '{currentSymbolPrice.Value}'$ with timeframe candle direction infos: \n" +
+                             $"[ {string.Join("\n", timeframeCandleDirectionInfos.Select(kvp => $"{kvp.Key}: {kvp.Value.Dump()}"))} ]");
+
+            MarketSignalMetadata marketSignal = new MarketSignalMetadata();
+            marketSignal.Symbol = symbol;
+            marketSignal.Timestamp = DateTime.Now;
+            marketSignal.CurrentPrice = currentSymbolPrice.Value;
+            marketSignal.MarketDirection = marketDirection;
+            marketSignal.TimeframeCandleDirectionInfos = timeframeCandleDirectionInfos;
+
+            InvokeMarketSignalEvent(marketSignal);
+
+            //FlushMarketData(symbol); // start over again
+        }
+
+        private Dictionary<int, InternalCandleDirectionInfo> GetTimeframeCandleDirectionInfos(string symbol, int? timeframe = null, int? useTotalCandles = null)
+        {
+            if (!_symbolCandles.TryGetValue(symbol, out Dictionary<int, List<InternalCandle>> symbolCandles))
+            {
+                _logger.LogError($"No '{symbol}' candles.");
+                return null;
+            }
+
+            Dictionary<int, InternalCandleDirectionInfo> timeframeCandleDirectionInfos = new Dictionary<int, InternalCandleDirectionInfo>();
+
+            if (timeframe.HasValue)
+            {
+                if (!symbolCandles.TryGetValue(timeframe.Value, out List<InternalCandle> candles))
                 {
-                    if (_option.CandleCollectionTimeframeThresholds.TryGetValue(timeframe, out int threshold))
+                    _logger.LogError($"No '{symbol}_{timeframe.Value}' candles.");
+                    return null;
+                }
+
+                int totalCandles = useTotalCandles.HasValue ? useTotalCandles.Value : candles.Count();
+
+                List<InternalCandle> lastCandles = candles.TakeLast(totalCandles).ToList();
+
+                SetCandlesPosition(lastCandles);
+
+                timeframeCandleDirectionInfos.Add(totalCandles, new InternalCandleDirectionInfo(lastCandles));
+            }
+            else
+            {
+                foreach (var kvp in symbolCandles)
+                {
+                    int totalCandles = useTotalCandles.HasValue ? useTotalCandles.Value : kvp.Value.Count();
+
+                    List<InternalCandle> lastCandles = kvp.Value.TakeLast(totalCandles).ToList();
+
+                    SetCandlesPosition(lastCandles);;
+
+                    timeframeCandleDirectionInfos.Add(kvp.Key, new InternalCandleDirectionInfo(lastCandles));
+                }
+            }
+
+            return timeframeCandleDirectionInfos;
+        }
+
+        private void SetCandlesPosition(List<InternalCandle> candles)
+        {
+            if (candles.IsNullOrEmpty())
+                return;
+
+            for (int i = 0; i < candles.Count(); i++)
+            {
+                candles[i].Position = i + 1;
+            }
+        }
+
+        private MarketDirection EvaluateTimeframeCandleDirectionInfos(Dictionary<int, InternalCandleDirectionInfo> timeframeCandleDirectionInfos)
+        {
+            if (timeframeCandleDirectionInfos.IsNullOrEmpty())
+                return MarketDirection.Unknown;
+
+            //xxx hardcoded, change!
+
+            if (timeframeCandleDirectionInfos[15].DirectionType == InternalCandleDirection.Expected_Down)
+            {
+                if (timeframeCandleDirectionInfos[5].DirectionType == InternalCandleDirection.Expected_Down)
+                {
+                    if (timeframeCandleDirectionInfos[1].DirectionType == InternalCandleDirection.Expected_Up || timeframeCandleDirectionInfos[1].DirectionType == InternalCandleDirection.Not_Expected_Up)
                     {
-                        return timeframeCandleCollections.Count >= threshold;
+                        return MarketDirection.Up;
                     }
                 }
             }
-
-            return false;
-        }
-
-        private List<CandleCollection> GetCandleCollections(string symbol, int timeframe)
-        {
-            if (_symbolCandleCollections.TryGetValue(symbol, out Dictionary<int, List<CandleCollection>> symbolCandleCollections))
+            else if (timeframeCandleDirectionInfos[15].DirectionType == InternalCandleDirection.Expected_Up)
             {
-                if (symbolCandleCollections.TryGetValue(timeframe, out List<CandleCollection> timeframeCandleCollections))
+                if (timeframeCandleDirectionInfos[5].DirectionType == InternalCandleDirection.Expected_Up)
                 {
-                    return timeframeCandleCollections;
+                    if (timeframeCandleDirectionInfos[1].DirectionType == InternalCandleDirection.Expected_Down || timeframeCandleDirectionInfos[1].DirectionType == InternalCandleDirection.Not_Expected_Down)
+                    {
+                        return MarketDirection.Down;
+                    }
                 }
-            }
-
-            return null;
-        }
-
-        private MarketDirection GetCandleCollectionsMarketDirection(List<CandleCollection> candleCollections, out decimal marketDirectionPercentage)
-        {
-            marketDirectionPercentage = 0;
-
-            if (candleCollections.IsNullOrEmpty())
-                return MarketDirection.Unknown;
-
-            //xxx need to check this code!
-
-            var ups = candleCollections.Where(x => x.DirectionType == InternalCandleDirection.Expected_Up || x.DirectionType == InternalCandleDirection.Not_Expected_Up);
-            var downs = candleCollections.Where(x => x.DirectionType == InternalCandleDirection.Expected_Down || x.DirectionType == InternalCandleDirection.Not_Expected_Down);
-            var unknows = candleCollections.Where(x => x.DirectionType == InternalCandleDirection.Unknown);
-
-            if (unknows.Count() > ups.Count() + downs.Count())
-                return MarketDirection.Unknown;
-
-            decimal averageUpsPercentage = 0;
-            decimal averageDownsPercentage = 0;
-
-            if (!ups.IsNullOrEmpty())
-                averageUpsPercentage = ups.Average(x => x.DirectionTypeGeneralPercentage);
-
-            if (!downs.IsNullOrEmpty())
-                averageDownsPercentage = downs.Average(x => x.DirectionTypeGeneralPercentage);
-
-            if (averageUpsPercentage > averageDownsPercentage)
-            {
-                marketDirectionPercentage = averageUpsPercentage;
-                return MarketDirection.Up;
-            }
-            else if (averageDownsPercentage > averageUpsPercentage)
-            {
-                marketDirectionPercentage = averageDownsPercentage;
-                return MarketDirection.Down;
             }
 
             return MarketDirection.Unknown;
         }
 
-        private void FlushCandleCollection(string symbol, int timeframe)
-        {
-            if (_symbolCandleCollections.TryGetValue(symbol, out Dictionary<int, List<CandleCollection>> symbolCandleCollections))
-            {
-                if (symbolCandleCollections.TryGetValue(timeframe, out List<CandleCollection> timeframeCandleCollections))
-                {
-                    _logger.LogInformation($"Flushing {symbol}_{timeframe}' candle collection. Total '{timeframeCandleCollections.Count}' candle collections.");
-
-                    timeframeCandleCollections.Clear();
-                }
-            }
-        }
-
-        private void InvokeMarketSignalGeneratedEvent(MarketSignalMetadata marketSignal)
+        private void InvokeMarketSignalEvent(MarketSignalMetadata marketSignal)
         {
             if (!Helpers.IsMarketSignalValid(marketSignal))
                 return;
 
-            _logger.LogDebug($"Invoking '{marketSignal.Symbol}_{marketSignal.Timeframe}' market signal generated event.");
+            _logger.LogDebug($"Invoking '{marketSignal.Symbol}' market signal event.");
 
             this.MarketSignalGeneratedEventHandler?.Invoke(this, new MarketSignalEventArgs(marketSignal));
         }

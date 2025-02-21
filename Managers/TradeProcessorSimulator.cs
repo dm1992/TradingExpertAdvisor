@@ -8,8 +8,9 @@ namespace TradingExpertAdvisor.Managers
 {
     public class TradeProcessorSimulator : ITradeProcessor
     {
-        private readonly ILogger<CandleCollector> _logger;
-        private readonly IMarketSignalValidator _marketSignalValidator;
+        private readonly ILogger<TradeProcessorSimulator> _logger;
+        //private readonly IMarketSignalValidator _marketSignalValidator;
+        private readonly IMarketSignalGenerator _marketSignalGenerator;
         private readonly IExchangeApiClient _apiClient;
         private readonly TradeProcessorSimulatorOption _option;
 
@@ -17,12 +18,12 @@ namespace TradingExpertAdvisor.Managers
         private List<SimulationTrade> _tradeBuffer;
 
         public TradeProcessorSimulator(ILoggerFactory loggerFactory,
-                                       IMarketSignalValidator marketSignalValidator,
+                                       IMarketSignalGenerator marketSignalGenerator,
                                        IExchangeApiClient apiClient,
                                        TradeProcessorSimulatorOption option)
         {
-            _logger = loggerFactory.CreateLogger<CandleCollector>();
-            _marketSignalValidator = marketSignalValidator;
+            _logger = loggerFactory.CreateLogger<TradeProcessorSimulator>();
+            _marketSignalGenerator = marketSignalGenerator;
             _apiClient = apiClient;
             _option = option;
 
@@ -38,7 +39,7 @@ namespace TradingExpertAdvisor.Managers
 
                 _logger.LogInformation($"Initializing...");
 
-                _marketSignalValidator.MarketSignalValidatedEventHandler += MarketSignalEventHandler;
+                _marketSignalGenerator.MarketSignalGeneratedEventHandler += MarketSignalEventHandler;
                 _apiClient.PriceInfoReceivedEventHandler += PriceInfoReceivedEventHandler;
 
                 Task.Run(() => RunBalanceTrackerInThread());

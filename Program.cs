@@ -60,35 +60,27 @@ try
             throw new Exception("Failed to start candle transformer.");
         }
 
-        CandleCollector candleCollector = new CandleCollector(_loggerFactory, candleTransformer);
-
-        if (!candleCollector.Initialize())
-        {
-            throw new Exception("Failed to start candle collector.");
-        }
-
-        MarketSignalGeneratorOption marketSignalGeneratorOption = new MarketSignalGeneratorOption();
-        configuration.GetSection("AppConfig:MarketSignalGenerator").Bind(marketSignalGeneratorOption);
-        MarketSignalGenerator marketSignalGenerator = new MarketSignalGenerator(_loggerFactory, candleCollector, exchangeApiClient, marketSignalGeneratorOption);
+        MarketSignalGenerator marketSignalGenerator = new MarketSignalGenerator(_loggerFactory, candleTransformer, exchangeApiClient);
 
         if (!marketSignalGenerator.Initialize())
         {
             throw new Exception("Failed to start market signal generator.");
         }
 
-        MarketSignalValidatorOption marketSignalValidatorOption = new MarketSignalValidatorOption();
-        configuration.GetSection("AppConfig:MarketSignalValidator").Bind(marketSignalValidatorOption);
-        MarketSignalValidator marketSignalValidator = new MarketSignalValidator(_loggerFactory, marketSignalGenerator, exchangeApiClient, marketSignalValidatorOption);
+        //xxx validator will be added later on! For now use generated market signals!
 
-        if (!marketSignalValidator.Initialize())
-        {
-            throw new Exception("Failed to start market signal validator.");
-        }
+        //MarketSignalValidator marketSignalValidator = new MarketSignalValidator(_loggerFactory, marketSignalGenerator, exchangeApiClient);
+
+        //if (!marketSignalValidator.Initialize())
+        //{
+        //    throw new Exception("Failed to start market signal validator.");
+        //}
 
         TradeProcessorSimulatorOption tradeProcessorSimulatorOption = new TradeProcessorSimulatorOption();
         configuration.GetSection("AppConfig:TradeProcessorSimulator").Bind(tradeProcessorSimulatorOption);
 
-        TradeProcessorSimulator tradeProcessorSimulator = new TradeProcessorSimulator(_loggerFactory, marketSignalValidator, exchangeApiClient, tradeProcessorSimulatorOption);
+        //xxx add MarketSignalValidator instance! For now MarketSignalGenerator instance!
+        TradeProcessorSimulator tradeProcessorSimulator = new TradeProcessorSimulator(_loggerFactory, marketSignalGenerator, exchangeApiClient, tradeProcessorSimulatorOption);
 
         if (!tradeProcessorSimulator.Initialize())
         {

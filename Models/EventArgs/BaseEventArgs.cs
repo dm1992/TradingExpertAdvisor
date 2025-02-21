@@ -9,7 +9,6 @@ namespace TradingExpertAdvisor.Models.EventArgs
     public abstract class BaseEventArgs
     {
         public DateTime CreatedAt { get; private set; }
-        public string Symbol { get; set; }
 
         public BaseEventArgs()
         {

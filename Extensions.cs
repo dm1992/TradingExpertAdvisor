@@ -3,6 +3,7 @@ using Org.BouncyCastle.Crypto.Tls;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using TradingExpertAdvisor.Models;
@@ -91,29 +92,6 @@ namespace TradingExpertAdvisor
                     return null;
 
             }
-        }
-
-        public static string DumpCandlesPositions(this Dictionary<int, List<InternalCandle>> timeframeCandles)
-        {
-            if (timeframeCandles.IsNullOrEmpty())
-                throw new InvalidOperationException("Timeframe candles cannot be empty.");
-
-            string dump = String.Empty;
-            foreach (var tc in timeframeCandles)
-            {
-                dump += $"\nTimeframe: '{tc.Key}', ";
-
-                if (!tc.Value.IsNullOrEmpty())
-                {
-                    dump += $"Positions: {String.Join(", ", tc.Value.Select(x => $"'{(x?.Position ?? -1)}'"))}";
-                }
-                else
-                {
-                    dump += "Positions: NULL";
-                }
-            }
-
-            return dump;
         }
 
         public static List<InternalCandle> GetCandlesWithCandleMetricAboveValue(this List<InternalCandle> candles, CandleMetric candleMetric, decimal value)

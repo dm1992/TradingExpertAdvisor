@@ -7,7 +7,7 @@ using TradingExpertAdvisor.Options;
 namespace TradingExpertAdvisor.Managers
 {
     /// <summary>
-    /// Transform received candle with all kinds of data. For now only with received trades and orderbook.
+    /// Transform received raw candle with relevant market data.
     /// </summary>
     public class CandleTransformer : ICandleTransformer
     {
@@ -16,8 +16,7 @@ namespace TradingExpertAdvisor.Managers
         private readonly ILogger<CandleTransformer> _logger;
         private readonly IExchangeApiClient _exchangeApiClient;
 
-        private Dictionary<string, Dictionary<int, InternalCandle>> _symbolCandles = new Dictionary<string, Dictionary<int, InternalCandle>>();
-        private ExchangeApiOption _option = null;
+        private Dictionary<string, Dictionary<int, InternalCandle>> _symbolPendingCandles = new Dictionary<string, Dictionary<int, InternalCandle>>();
         private bool _isInitialized = false; 
 
         public CandleTransformer(ILoggerFactory loggerFactory,
@@ -36,8 +35,6 @@ namespace TradingExpertAdvisor.Managers
 
                 _logger.LogInformation($"Initializing...");
 
-                _option = _exchangeApiClient.GetOption();
-
                 _exchangeApiClient.CandleReceivedEventHandler += CandleReceivedEventHandler;
                 _exchangeApiClient.TradeReceivedEventHandler += TradeReceivedEventHandler;
                 _exchangeApiClient.OrderbookReceivedEventHandler += OrderbookReceivedEventHandler;
@@ -52,12 +49,12 @@ namespace TradingExpertAdvisor.Managers
             }
         }
 
-        private bool AreCandlesReady(string symbol)
+        private bool ArePendingCandlesReady(string symbol)
         {
-            if (!_symbolCandles.TryGetValue(symbol, out Dictionary<int, InternalCandle> timeframeCandles))
+            if (!_symbolPendingCandles.TryGetValue(symbol, out Dictionary<int, InternalCandle> symbolPendingCandles))
                 return false;
 
-            return timeframeCandles.Keys.Count == _option.Timeframes.Count;
+            return symbolPendingCandles.Keys.Count == _exchangeApiClient.GetOption().Timeframes.Count;
         }
 
         private void CandleReceivedEventHandler(object? sender, CandleReceivedEventArgs e)
@@ -67,12 +64,12 @@ namespace TradingExpertAdvisor.Managers
 
         private void TradeReceivedEventHandler(object? sender, TradeReceivedEventArgs e)
         {
-            SaveTradesToCandle(e.Trades);
+            SaveTradesToPendingCandle(e.Trades);
         }
 
         private void OrderbookReceivedEventHandler(object? sender, OrderbookReceivedEventArgs e)
         {
-            SaveOrderbookToCandle(e.Orderbook);
+            SaveOrderbookToPendingCandle(e.Orderbook);
         }
 
         private void UnsolicitedMessageEventHandler(object? sender, UnsolicitedMessageEventArgs e)
@@ -99,32 +96,32 @@ namespace TradingExpertAdvisor.Managers
 
         private void HandleReceivedCandle(InternalCandle candle)
         {
-            lock (_symbolCandles)
+            lock (_symbolPendingCandles)
             {
                 try
                 {
-                    if (!_symbolCandles.TryGetValue(candle.Symbol, out Dictionary<int, InternalCandle> symbolCandles))
+                    if (!_symbolPendingCandles.TryGetValue(candle.Symbol, out Dictionary<int, InternalCandle> symbolPendingCandles))
                     {
-                        _logger.LogDebug($"Received new '{candle.Symbol}_{candle.Timeframe}' candle.");
+                        _logger.LogDebug($"Received new '{candle.Symbol}_{candle.Timeframe}' pending candle.");
 
-                        symbolCandles = new Dictionary<int, InternalCandle>();
-                        symbolCandles.Add(candle.Timeframe, candle);
+                        symbolPendingCandles = new Dictionary<int, InternalCandle>();
+                        symbolPendingCandles.Add(candle.Timeframe, candle);
 
-                        _symbolCandles.Add(candle.Symbol, symbolCandles);
+                        _symbolPendingCandles.Add(candle.Symbol, symbolPendingCandles);
                     }
-                    else if (!symbolCandles.TryGetValue(candle.Timeframe, out InternalCandle timeframeCandle))
+                    else if (!symbolPendingCandles.TryGetValue(candle.Timeframe, out InternalCandle pendingCandle))
                     {
-                        _logger.LogDebug($"Received new '{candle.Symbol}_{candle.Timeframe}' candle.");
+                        _logger.LogDebug($"Received new '{candle.Symbol}_{candle.Timeframe}' pending candle.");
 
-                        symbolCandles.Add(candle.Timeframe, candle);
+                        symbolPendingCandles.Add(candle.Timeframe, candle);
                     }
                     else if (candle.IsClosed)
                     {
-                        _logger.LogDebug($"Closing '{timeframeCandle.Symbol}_{timeframeCandle.Timeframe}' candle.");
+                        _logger.LogDebug($"Closing '{pendingCandle.Symbol}_{pendingCandle.Timeframe}' pending candle.");
 
-                        InvokeCandleTransformedEvent(timeframeCandle);
+                        InvokeCandleTransformedEvent(pendingCandle);
 
-                        symbolCandles.Remove(timeframeCandle.Timeframe);
+                        symbolPendingCandles.Remove(pendingCandle.Timeframe);
                     }
                 }
                 catch (Exception ex)
@@ -134,18 +131,18 @@ namespace TradingExpertAdvisor.Managers
             }
         }
 
-        private void SaveTradesToCandle(List<InternalTrade> trades)
+        private void SaveTradesToPendingCandle(List<InternalTrade> trades)
         {
-            lock (_symbolCandles)
+            lock (_symbolPendingCandles)
             {
                 try
                 {
                     string symbol = trades.First().Symbol;
 
-                    if (!AreCandlesReady(symbol))
+                    if (!ArePendingCandlesReady(symbol))
                         return;
 
-                    if (!_symbolCandles.TryGetValue(symbol, out Dictionary<int, InternalCandle> timeframeCandles))
+                    if (!_symbolPendingCandles.TryGetValue(symbol, out Dictionary<int, InternalCandle> timeframeCandles))
                         return;
 
                     foreach (var timeframeCandle in timeframeCandles)
@@ -155,21 +152,21 @@ namespace TradingExpertAdvisor.Managers
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed save trades to candle.");
+                    _logger.LogError(ex, "Failed save trades to pending candle.");
                 }
             }
         }
 
-        private void SaveOrderbookToCandle(InternalOrderbook orderbook)
+        private void SaveOrderbookToPendingCandle(InternalOrderbook orderbook)
         {
-            lock (_symbolCandles)
+            lock (_symbolPendingCandles)
             {
                 try
                 {
-                    if (!AreCandlesReady(orderbook.Symbol))
+                    if (!ArePendingCandlesReady(orderbook.Symbol))
                         return;
 
-                    if (!_symbolCandles.TryGetValue(orderbook.Symbol, out Dictionary<int, InternalCandle> timeframeCandles))
+                    if (!_symbolPendingCandles.TryGetValue(orderbook.Symbol, out Dictionary<int, InternalCandle> timeframeCandles))
                         return;
 
                     foreach (var timeframeCandle in timeframeCandles)
@@ -179,7 +176,7 @@ namespace TradingExpertAdvisor.Managers
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed save orderbook to candle.");
+                    _logger.LogError(ex, "Failed save orderbook to pending candle.");
                 }
             }
         }

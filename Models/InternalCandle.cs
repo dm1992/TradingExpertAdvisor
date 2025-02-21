@@ -132,9 +132,6 @@ namespace TradingExpertAdvisor.Models
                    $"---------------------------------------------------------------------------------------------------------------------------------------\n";
         }
 
-
-        #region Market metric calculations
-
         private InternalCandleDirection GetDirectionType()
         {
             decimal activeBuyVolumePercentage = this.GetActiveBuyVolumePercentage();
@@ -166,6 +163,9 @@ namespace TradingExpertAdvisor.Models
 
             return InternalCandleDirection.Unknown;
         }
+
+
+        #region Market metric calculations
 
         private decimal GetActiveBuyVolume()
         {
