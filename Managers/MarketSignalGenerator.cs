@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
+using TradingExpertAdvisor.Database;
 using TradingExpertAdvisor.Interfaces;
 using TradingExpertAdvisor.Models;
 using TradingExpertAdvisor.Models.EventArgs;
@@ -20,17 +21,24 @@ namespace TradingExpertAdvisor.Managers
         private readonly ILogger<MarketSignalGenerator> _logger;
         private readonly ICandleTransformer _candleTransformer;
         private readonly IExchangeApiClient _exchangeApiClient;
+        private readonly MarketSignalEvaluationDatabaseManager _dbManager;
+        private readonly MarketSignalGeneratorOption _option;
 
         private Dictionary<string, Dictionary<int, List<InternalCandle>>> _symbolCandles = new Dictionary<string, Dictionary<int, List<InternalCandle>>>();
+        private List<MarketSignalMetadata> _marketSignalBuffer = new List<MarketSignalMetadata>();      
         private bool _isInitialized = false;
 
         public MarketSignalGenerator(ILoggerFactory loggerFactory,
                                      ICandleTransformer candleTransformer,
-                                     IExchangeApiClient exchangeApiClient)
+                                     IExchangeApiClient exchangeApiClient,
+                                     MarketSignalEvaluationDatabaseManager dbManager,
+                                     MarketSignalGeneratorOption option)
         {
             _logger = loggerFactory.CreateLogger<MarketSignalGenerator>();
             _candleTransformer = candleTransformer;
             _exchangeApiClient = exchangeApiClient;
+            _dbManager = dbManager;
+            _option = option;
         }
 
         public bool Initialize()
@@ -41,7 +49,13 @@ namespace TradingExpertAdvisor.Managers
 
                 _logger.LogInformation($"Initializing...");
 
+                if (_option.TakeProfitAmounts.Count != _option.StopLossAmounts.Count)
+                {
+                    throw new Exception("Take profit and stop amounts lists not long enough.");
+                }
+
                 _candleTransformer.CandleTransformedEventHandler += CandleTransformedEventHandler;
+                _exchangeApiClient.PriceInfoReceivedEventHandler += PriceInfoReceivedEventHandler;
 
                 return _isInitialized = true;
             }
@@ -56,7 +70,69 @@ namespace TradingExpertAdvisor.Managers
         {
             SaveCandle(e.Candle);
 
-            InvokeMarketEntry(e.Candle.Symbol);
+            EvaluateMarket(e.Candle.Symbol);
+        }
+
+        private void PriceInfoReceivedEventHandler(object? sender, PriceInfoReceivedEventArgs e)
+        {
+            EvaluateMarketSignal(e.PriceInfo);
+        }
+
+        private void EvaluateMarketSignal(PriceInfo priceInfo)
+        {
+            if (priceInfo == null) return;
+
+            lock (_marketSignalBuffer)
+            {
+                List<MarketSignalMetadata> marketSignals =_marketSignalBuffer.Where(x => x.Symbol == priceInfo.Symbol).ToList();
+
+                if (marketSignals.IsNullOrEmpty()) 
+                    return;
+
+                //_logger.LogInformation($"Evaluating '{marketSignals.Count}' '{priceInfo.Symbol}' market signals...");
+
+                foreach (MarketSignalMetadata marketSignal in marketSignals)
+                {
+                    if (priceInfo.Price >= marketSignal.ExitPriceTakeProfitUp)
+                    {
+                        marketSignal.MarketDirection = MarketDirection.Up;
+                        marketSignal.IsObsolete = true;
+                    }
+                    else if (priceInfo.Price <= marketSignal.ExitPriceTakeProfitDown)
+                    {
+                        marketSignal.MarketDirection = MarketDirection.Down;
+                        marketSignal.IsObsolete = true;
+                    }
+                    else if (priceInfo.Price >= marketSignal.ExitPriceStopLossUp)
+                    {
+                        marketSignal.MarketDirection = MarketDirection.Up;
+                        marketSignal.IsObsolete = true;
+                    }
+                    else if (priceInfo.Price <= marketSignal.ExitPriceStopLossDown)
+                    {
+                        marketSignal.MarketDirection = MarketDirection.Down;
+                        marketSignal.IsObsolete = true;
+                    }
+
+                    if (marketSignal.IsObsolete)
+                    {
+                        _logger.LogInformation($"Evaluated '{marketSignal.Symbol}' market signal. " +
+                                               $"Entry price: '{marketSignal.EntryPrice}$', exit price: '{priceInfo.Price}$', market direction: '{marketSignal.MarketDirection}'.");
+
+                        if (_dbManager.SaveMarketSignalEvaluation(marketSignal.Tag))
+                        {
+                            _dbManager.UpdateMarketSignalDirectionCounter(marketSignal.Tag, marketSignal.MarketDirection);
+                        }
+                    }
+                }
+
+                int removed = _marketSignalBuffer.RemoveAll(x => x.IsObsolete);
+
+                if (removed > 0)
+                {
+                    _logger.LogInformation($"Removed '{removed}' obsolete evaluated market signals.");
+                }
+            }
         }
 
         private void SaveCandle(InternalCandle candle)
@@ -88,23 +164,23 @@ namespace TradingExpertAdvisor.Managers
             }
         }
 
-        private void InvokeMarketEntry(string symbol)
+        private void EvaluateMarket(string symbol)
         {
             try
             {
                 if (!IsEnoughMarketData(symbol))
                 {
-                    _logger.LogWarning($"Failed to invoke '{symbol}' market entry. Not enough '{symbol}' market data.");
+                    _logger.LogWarning($"Failed to evaluate '{symbol}' market. Not enough '{symbol}' market data.");
                     return;
                 }
 
                 CreateMarketSignal(symbol);
-
+                
                 FlushMarketData(symbol); // start over again
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to invoke market entry.");
+                _logger.LogError(ex, "Failed to evaluate market.");
             }
         }
 
@@ -123,8 +199,161 @@ namespace TradingExpertAdvisor.Managers
                 _logger.LogWarning($"'{symbol}_{maxCandleTimeframe}' candle not present yet.");
                 return false;
             }
+            
+            foreach (var kvp in symbolCandles)
+            {
+                int expectedCandles = maxCandleTimeframe / kvp.Key;
+
+                if (expectedCandles != kvp.Value.Count)
+                {
+                    _logger.LogWarning($"Not enough '{symbol}' candles. Expected '{expectedCandles}' candles, actual '{kvp.Value.Count}' candles.");
+                    return false;
+                }
+            }
 
             return true;
+        }
+
+        private void CreateMarketSignal(string symbol)
+        {
+            lock (_marketSignalBuffer)
+            {
+                if (!_symbolCandles.TryGetValue(symbol, out Dictionary<int, List<InternalCandle>> symbolCandles))
+                {
+                    _logger.LogError($"Failed to create '{symbol}' market signal. No '{symbol}' candles.");
+                    return;
+                }
+
+                decimal? currentSymbolPrice = _exchangeApiClient.GetLastPrice(symbol);
+
+                if (currentSymbolPrice == null)
+                {
+                    _logger.LogError($"Failed to create '{symbol}' market signal. Unknown '{symbol}' current price.");
+                    return;
+                }
+
+                for (int i = 0; i < _option.TakeProfitAmounts.Count; i++)
+                {
+                    string marketSignalTag = $"{symbol}_{_option.TakeProfitAmounts[i]}_{_option.StopLossAmounts[i]}";
+
+                    foreach (var kvp in symbolCandles)
+                    {
+                        marketSignalTag += $"_{String.Join("_", kvp.Value.Select(x => $"{x.Timeframe}_{x.DirectionType}"))}";
+                    }
+
+                    MarketSignalMetadata marketSignal = new MarketSignalMetadata();
+                    marketSignal.Tag = marketSignalTag;
+                    marketSignal.Symbol = symbol;
+                    marketSignal.Timestamp = DateTime.UtcNow;
+                    marketSignal.EntryPrice = currentSymbolPrice.Value;
+                    marketSignal.TakeProfitAmount = _option.TakeProfitAmounts[i];
+                    marketSignal.StopLossAmount = _option.StopLossAmounts[i];
+                    marketSignal.IsObsolete = false;
+                    marketSignal.MarketDirection = MarketDirection.Unknown;
+
+                    _logger.LogInformation($"Created '{marketSignal.Symbol}' market signal at entry price '{marketSignal.EntryPrice}$'.");
+
+                    _marketSignalBuffer.Add(marketSignal);
+
+                    TryMarketSignal_V2(marketSignal);
+                }
+            }
+        }
+
+        private void TryMarketSignal_V2(MarketSignalMetadata marketSignal)
+        {
+            if (marketSignal == null)
+                return;
+
+            var marketSignalEvaluations = _dbManager.GetSimilarMarketSignalEvaluations(marketSignal.Tag);
+
+            if (marketSignalEvaluations.IsNullOrEmpty() || marketSignalEvaluations.Sum(x => x.Total) < 4)
+                return;
+
+            var totalUps = marketSignalEvaluations.Sum(x => x.Ups);
+            var totalDowns = marketSignalEvaluations.Sum(x => x.Downs);
+            var total = totalUps + totalDowns;
+
+            var percentageUps = (totalUps / (decimal)(total)) * 100.0m;
+            var percentageDowns = (totalDowns / (decimal)(total)) * 100.0m;
+
+            if (percentageUps >= 85.0m)
+            {
+                UpdateTPSL(marketSignal);
+
+                marketSignal.MarketDirection = MarketDirection.Up;
+            }
+            else if (percentageDowns >= 85.0m)
+            {
+                UpdateTPSL(marketSignal);
+
+                marketSignal.MarketDirection = MarketDirection.Down;
+            }
+
+
+            if (marketSignal.MarketDirection != MarketDirection.Unknown)
+            {
+                _logger.LogDebug($">>>>> Trying '{marketSignal.MarketDirection}' market signal tag '{marketSignal.Tag}' " +
+                                 $"UPS percentage '{percentageUps}' and DOWNS percentage '{percentageDowns}', total signals '{total}'.");
+
+                MarketSignalGeneratedEventHandler?.Invoke(this, new MarketSignalEventArgs(marketSignal));
+            }
+            else
+            {
+                _logger.LogDebug($"Will skip UNKNOWN market signal with tag '{marketSignal.Tag}'...");
+            }
+
+        }
+
+        private void UpdateTPSL(MarketSignalMetadata marketSignal)
+        {
+            if (marketSignal == null)
+                return;
+
+            //var s = marketSignalEvaluation.Tag.Split('_');
+
+            //decimal tp = Convert.ToDecimal(s[1]);
+            //decimal sl = Convert.ToDecimal(s[2]);
+
+            //_logger.LogDebug($"Updating market signal TP from {marketSignal.TakeProfitAmount} to {tp} and SL from {marketSignal.StopLossAmount} to {sl}.");
+
+            marketSignal.TakeProfitAmount = 125;
+            marketSignal.StopLossAmount = 500;
+        }
+
+        private void TryMarketSignal(MarketSignalMetadata marketSignal)
+        {
+            if (marketSignal == null) 
+                return;
+
+            MarketSignalEvaluation marketSignalEvaluation = _dbManager.GetMarketSignalEvaluation(marketSignal.Tag);
+
+            if (marketSignalEvaluation == null || marketSignalEvaluation.Total < 3)
+            {
+                _logger.LogWarning($"Invalid market evaluation. Will not try '{marketSignal.MarketDirection}' market signal tag '{marketSignal.Tag}'.");
+                return;
+            }
+
+            if (marketSignalEvaluation.UpsPercentage == 100.0m) // marketSignalEvaluation.DownsPercentage
+            {
+                marketSignal.MarketDirection = MarketDirection.Up;
+            }
+            else if (marketSignalEvaluation.DownsPercentage == 100.0m) // marketSignalEvaluation.UpsPercentage
+            {
+                marketSignal.MarketDirection = MarketDirection.Down;
+            }
+
+            if (marketSignal.MarketDirection != MarketDirection.Unknown)
+            {
+                _logger.LogDebug($">>>>> Trying '{marketSignal.MarketDirection}' market signal tag '{marketSignal.Tag}' " +
+                                 $"UPS percentage '{marketSignalEvaluation.UpsPercentage}' and DOWNS percentage '{marketSignalEvaluation.DownsPercentage}', total signals '{marketSignalEvaluation.Total}'.");
+
+                MarketSignalGeneratedEventHandler?.Invoke(this, new MarketSignalEventArgs(marketSignal));
+            }
+            else
+            {
+                _logger.LogDebug($"Will skip UNKNOWN market signal with tag '{marketSignal.Tag}'...");
+            }
         }
 
         private void FlushMarketData(string symbol)
@@ -138,136 +367,6 @@ namespace TradingExpertAdvisor.Managers
             _logger.LogDebug($"Flushing '{symbol}' market data of total '{symbolCandles.Values.Count}' entries.");
 
             symbolCandles.Clear();
-        }
-
-        private void CreateMarketSignal(string symbol)
-        {
-            Dictionary<int, InternalCandleDirectionInfo> timeframeCandleDirectionInfos = GetTimeframeCandleDirectionInfos(symbol);
-
-            MarketDirection marketDirection = EvaluateTimeframeCandleDirectionInfos(timeframeCandleDirectionInfos);
-            
-            if (marketDirection == MarketDirection.Unknown)
-            {
-                _logger.LogError($"Failed to create '{symbol}' market signal.");
-                return;
-            }
-
-            decimal? currentSymbolPrice = _exchangeApiClient.GetLastPrice(symbol);
-
-            if (currentSymbolPrice == null)
-            {
-                _logger.LogError($"Failed to create '{symbol}' market signal. Unknown '{symbol}' current price.");
-                return;
-            }
-
-            _logger.LogDebug($">>> Creating '{symbol}' market signal with direction '{marketDirection}' @ price '{currentSymbolPrice.Value}'$ with timeframe candle direction infos: \n" +
-                             $"[ {string.Join("\n", timeframeCandleDirectionInfos.Select(kvp => $"{kvp.Key}: {kvp.Value.Dump()}"))} ]");
-
-            MarketSignalMetadata marketSignal = new MarketSignalMetadata();
-            marketSignal.Symbol = symbol;
-            marketSignal.Timestamp = DateTime.Now;
-            marketSignal.CurrentPrice = currentSymbolPrice.Value;
-            marketSignal.MarketDirection = marketDirection;
-            marketSignal.TimeframeCandleDirectionInfos = timeframeCandleDirectionInfos;
-
-            InvokeMarketSignalEvent(marketSignal);
-
-            //FlushMarketData(symbol); // start over again
-        }
-
-        private Dictionary<int, InternalCandleDirectionInfo> GetTimeframeCandleDirectionInfos(string symbol, int? timeframe = null, int? useTotalCandles = null)
-        {
-            if (!_symbolCandles.TryGetValue(symbol, out Dictionary<int, List<InternalCandle>> symbolCandles))
-            {
-                _logger.LogError($"No '{symbol}' candles.");
-                return null;
-            }
-
-            Dictionary<int, InternalCandleDirectionInfo> timeframeCandleDirectionInfos = new Dictionary<int, InternalCandleDirectionInfo>();
-
-            if (timeframe.HasValue)
-            {
-                if (!symbolCandles.TryGetValue(timeframe.Value, out List<InternalCandle> candles))
-                {
-                    _logger.LogError($"No '{symbol}_{timeframe.Value}' candles.");
-                    return null;
-                }
-
-                int totalCandles = useTotalCandles.HasValue ? useTotalCandles.Value : candles.Count();
-
-                List<InternalCandle> lastCandles = candles.TakeLast(totalCandles).ToList();
-
-                SetCandlesPosition(lastCandles);
-
-                timeframeCandleDirectionInfos.Add(totalCandles, new InternalCandleDirectionInfo(lastCandles));
-            }
-            else
-            {
-                foreach (var kvp in symbolCandles)
-                {
-                    int totalCandles = useTotalCandles.HasValue ? useTotalCandles.Value : kvp.Value.Count();
-
-                    List<InternalCandle> lastCandles = kvp.Value.TakeLast(totalCandles).ToList();
-
-                    SetCandlesPosition(lastCandles);;
-
-                    timeframeCandleDirectionInfos.Add(kvp.Key, new InternalCandleDirectionInfo(lastCandles));
-                }
-            }
-
-            return timeframeCandleDirectionInfos;
-        }
-
-        private void SetCandlesPosition(List<InternalCandle> candles)
-        {
-            if (candles.IsNullOrEmpty())
-                return;
-
-            for (int i = 0; i < candles.Count(); i++)
-            {
-                candles[i].Position = i + 1;
-            }
-        }
-
-        private MarketDirection EvaluateTimeframeCandleDirectionInfos(Dictionary<int, InternalCandleDirectionInfo> timeframeCandleDirectionInfos)
-        {
-            if (timeframeCandleDirectionInfos.IsNullOrEmpty())
-                return MarketDirection.Unknown;
-
-            //xxx hardcoded, change!
-
-            if (timeframeCandleDirectionInfos[15].DirectionType == InternalCandleDirection.Expected_Down)
-            {
-                if (timeframeCandleDirectionInfos[5].DirectionType == InternalCandleDirection.Expected_Down)
-                {
-                    if (timeframeCandleDirectionInfos[1].DirectionType == InternalCandleDirection.Expected_Up || timeframeCandleDirectionInfos[1].DirectionType == InternalCandleDirection.Not_Expected_Up)
-                    {
-                        return MarketDirection.Up;
-                    }
-                }
-            }
-            else if (timeframeCandleDirectionInfos[15].DirectionType == InternalCandleDirection.Expected_Up)
-            {
-                if (timeframeCandleDirectionInfos[5].DirectionType == InternalCandleDirection.Expected_Up)
-                {
-                    if (timeframeCandleDirectionInfos[1].DirectionType == InternalCandleDirection.Expected_Down || timeframeCandleDirectionInfos[1].DirectionType == InternalCandleDirection.Not_Expected_Down)
-                    {
-                        return MarketDirection.Down;
-                    }
-                }
-            }
-
-            return MarketDirection.Unknown;
-        }
-
-        private void InvokeMarketSignalEvent(MarketSignalMetadata marketSignal)
-        {
-            if (!Helpers.IsMarketSignalValid(marketSignal))
-                return;
-
-            _logger.LogDebug($"Invoking '{marketSignal.Symbol}' market signal event.");
-
-            this.MarketSignalGeneratedEventHandler?.Invoke(this, new MarketSignalEventArgs(marketSignal));
         }
     }
 }

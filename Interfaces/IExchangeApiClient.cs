@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TradingExpertAdvisor.Models;
 using TradingExpertAdvisor.Models.EventArgs;
 using TradingExpertAdvisor.Options;
 
@@ -18,10 +19,14 @@ namespace TradingExpertAdvisor.Interfaces
 
         Task<bool> Initialize();
 
+        Task<List<SymbolInfo>> GetSymbolsAsync();
+
+        Task<List<Announcement>> GetAnnouncementsAsync();
+
         ExchangeApiOption GetOption();
 
         decimal? GetLastPrice(string symbol);
 
-        //xxx get announcements ... what/when will be listed
+        
     }
 }

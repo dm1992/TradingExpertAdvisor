@@ -82,14 +82,17 @@ namespace TradingExpertAdvisor.Managers
                 if (activeTrades >= _option.ActiveTradesLimit)
                     return;
 
-                SimulationTrade trade = new SimulationTrade(_option.TakeProfitAmount, _option.StopLossAmount);
+                SimulationTrade trade = new SimulationTrade();
                 trade.Time = DateTime.Now;
                 trade.Symbol = marketSignal.Symbol;
                 trade.EntryPrice = lastPrice.Value;
+                trade.TakeProfitAmount = marketSignal.TakeProfitAmount;
+                trade.StopLossAmount = marketSignal.StopLossAmount;
                 trade.TradeDirection = marketSignal.MarketDirection == MarketDirection.Up ? TradeDirection.Buy : TradeDirection.Sell;
                 trade.Volume = 1;
 
-                _logger.LogInformation($"<<<<< Opening '{trade.Symbol}' trade in direction '{trade.TradeDirection}' @ price '{trade.EntryPrice}' <<<<<");
+                _logger.LogInformation($"<<<<< Opening '{trade.Symbol}' trade in direction '{trade.TradeDirection}' @ price '{trade.EntryPrice}', " +
+                                       $"TP: '{trade.TakeProfitPrice}', SL: '{trade.StopLossPrice}' <<<<<");
 
                 _tradeBuffer.Add(trade);
             }
@@ -108,6 +111,24 @@ namespace TradingExpertAdvisor.Managers
 
                 foreach (var trade in trades)
                 {
+                    if (!trade.MaxPrice.HasValue)
+                    {
+                        trade.MaxPrice = priceInfo.Price;
+                    }
+                    else if (priceInfo.Price > trade.MaxPrice)
+                    {
+                        trade.MaxPrice = priceInfo.Price;
+                    }
+
+                    if (!trade.MinPrice.HasValue)
+                    {
+                        trade.MinPrice = priceInfo.Price;
+                    }
+                    else if (priceInfo.Price < trade.MinPrice)
+                    {
+                        trade.MinPrice = priceInfo.Price;
+                    }
+
                     if (trade.TradeDirection == TradeDirection.Buy)
                     {
                         if (priceInfo.Price >= trade.TakeProfitPrice)
@@ -133,7 +154,7 @@ namespace TradingExpertAdvisor.Managers
 
                     if (trade.Balance.HasValue)
                     {
-                        _logger.LogInformation($"!!!!! '{priceInfo.Symbol}' trade completed with balance '{trade.Balance.Value}'. Entry price: '{trade.EntryPrice}' and Exit price: '{trade.ExitPrice}' !!!!!");
+                        _logger.LogInformation($"!!!!! '{priceInfo.Symbol}' trade completed with balance '{trade.Balance.Value}'. Entry price: '{trade.EntryPrice}', Exit price: '{priceInfo.Price}'), Min price: '{trade.MinPrice}', Max price: '{trade.MaxPrice}' !!!!!");
                     }
                 }
             }
@@ -150,7 +171,7 @@ namespace TradingExpertAdvisor.Managers
                     _logger.LogInformation($">>>>> Total balance: '{completedTrades.Sum(x => x.Balance)}' <<<<<");
                 }
 
-                Thread.Sleep(10000);
+                Thread.Sleep(60000 * 5);
             }
         }
     }

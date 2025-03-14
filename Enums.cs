@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CryptoExchange.Net.Attributes;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -60,5 +61,14 @@ namespace TradingExpertAdvisor
         MinAverageDeviation = 6,
         MaxMedianDeviation = 7,
         MinMedianDeviation = 8
+    }
+
+    public enum SymbolStatus
+    {
+        PreLaunch = 0,
+        Trading = 1,
+        Settling = 2,
+        Delivering = 3,
+        Closed = 4
     }
 }

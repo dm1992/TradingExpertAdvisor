@@ -18,6 +18,7 @@ namespace TradingExpertAdvisor.Apis.BybitApi
     public class BybitSpotApiClient : BybitBaseApiClient, IExchangeApiClient
     {
         private readonly ILogger<BybitSpotApiClient> _logger;
+        private readonly DateTime _instanceTime;
 
         public event EventHandler<TradeReceivedEventArgs> TradeReceivedEventHandler;
         public event EventHandler<OrderbookReceivedEventArgs> OrderbookReceivedEventHandler;
@@ -28,10 +29,12 @@ namespace TradingExpertAdvisor.Apis.BybitApi
         private Dictionary<string, InternalOrderbook> _orderbooks = new Dictionary<string, InternalOrderbook>();
         private Dictionary<string, decimal> _prices = new Dictionary<string, decimal>();
         private bool _isInitialized = false;
+        private bool _isAllowedToInvokeCandle = false;
 
         public BybitSpotApiClient(ILoggerFactory loggerFactory, ExchangeApiOption option) : base(option)
         {
             _logger = loggerFactory.CreateLogger<BybitSpotApiClient>();
+            _instanceTime = DateTime.UtcNow;
         }
 
         public ExchangeApiOption GetOption()
@@ -74,6 +77,78 @@ namespace TradingExpertAdvisor.Apis.BybitApi
             {
                 _logger.LogError(ex, "Failed to initialize.");
                 return false;
+            }
+        }
+
+        public async Task<List<SymbolInfo>> GetSymbolsAsync()
+        {
+            try
+            {
+                var response = await _restClient.V5Api.ExchangeData.GetSpotSymbolsAsync();
+
+                if (!response.GetResultOrError(out _, out var error))
+                {
+                    _logger.LogError($"Failed to get spot symbols. Error: ({error?.Code}) {error?.Message}.");
+                    return null;
+                }
+
+                List<SymbolInfo> symbols = new List<SymbolInfo>();
+
+                foreach (var data in response.Data.List)
+                {
+                    symbols.Add(new SymbolInfo()
+                    {
+                        Name = data.Name,
+                        BaseAsset = data.BaseAsset,
+                        QuoteAsset = data.QuoteAsset,
+                        Status = (SymbolStatus)data.Status // match enum codes, do not change!
+                    });
+                }
+
+                return symbols;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get spot symbols.");
+                return null;
+            }
+        }
+
+        public async Task<List<Announcement>> GetAnnouncementsAsync()
+        {
+            try
+            {
+                var response = await _restClient.V5Api.ExchangeData.GetAnnouncementsAsync(locale: "en-US");
+
+                if (!response.GetResultOrError(out _, out var error))
+                {
+                    _logger.LogError($"Failed to get announcements. Error: ({error?.Code}) {error?.Message}.");
+                    return null;
+                }
+
+                List<Announcement> announcements = new List<Announcement>();
+
+                foreach(var data in response.Data.List)
+                {
+                    announcements.Add(new Announcement()
+                    {
+                        Title = data.Title,
+                        Description = data.Description,
+                        StartTimestamp = data.StartTimestamp,
+                        EndTimestamp = data.EndTimestamp,
+                        PublishTime = data.PublishTime,
+                        Timestamp = data.Timestamp,
+                        Url = data.Url,
+                        Tags = data.Tags.ToList()
+                    });
+                }
+
+                return announcements;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get announcements.");
+                return null;
             }
         }
 
@@ -284,6 +359,7 @@ namespace TradingExpertAdvisor.Apis.BybitApi
                 foreach (var candle in candles.Data)
                 {
                     int? timeframe = candle.Interval.GetTimeframe();
+
                     if (timeframe == null)
                     {
                         _logger.LogError($"Unable to convert kline interval: {candle.Interval} to minutes.");
@@ -360,6 +436,22 @@ namespace TradingExpertAdvisor.Apis.BybitApi
 
         public void InvokeCandleReceivedEvent(InternalCandle candle)
         {
+            if (!_isAllowedToInvokeCandle)
+            {
+                if (candle.Timeframe == _option.Timeframes.Max())
+                {
+                    if (candle.IsClosed && candle.StartTime < _instanceTime)
+                    {
+                        _isAllowedToInvokeCandle = true;
+
+                        _logger.LogDebug("Received max timeframe closed candle. Allowed to invoke candle from now on.");
+                        return;
+                    }
+                }
+
+                return;
+            }
+
             this.CandleReceivedEventHandler?.Invoke(this, new CandleReceivedEventArgs(candle));
         }
 

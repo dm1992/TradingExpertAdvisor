@@ -60,13 +60,9 @@ namespace TradingExpertAdvisor.Models
             }
         }
 
+        public decimal? MaxPrice { get; set; }
+        public decimal? MinPrice { get; set; }
+
         public bool HasCompleted { get { return ExitPrice.HasValue; } }
-
-
-        public SimulationTrade(decimal takeProfitAmount, decimal stopLossAmount)
-        {
-            TakeProfitAmount = takeProfitAmount;
-            StopLossAmount = stopLossAmount;
-        }
     }
 }

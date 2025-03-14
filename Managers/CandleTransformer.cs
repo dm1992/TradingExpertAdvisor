@@ -17,7 +17,7 @@ namespace TradingExpertAdvisor.Managers
         private readonly IExchangeApiClient _exchangeApiClient;
 
         private Dictionary<string, Dictionary<int, InternalCandle>> _symbolPendingCandles = new Dictionary<string, Dictionary<int, InternalCandle>>();
-        private bool _isInitialized = false; 
+        private bool _isInitialized = false;
 
         public CandleTransformer(ILoggerFactory loggerFactory,
                                  IExchangeApiClient exchangeApiClient)
