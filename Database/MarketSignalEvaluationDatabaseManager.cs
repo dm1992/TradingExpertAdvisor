@@ -66,11 +66,7 @@ namespace TradingExpertAdvisor.Database
             {
                 using (var dbContext = new MarketSignalEvaluationDatabaseContext())
                 {
-                    int underscoreIndex = Helpers.FindNthIndex(marketSignalTag, '_', 3);
-
-                    string subTag = marketSignalTag.Substring(underscoreIndex);
-
-                    return dbContext.MarketSignalEvaluations.Where(x => x.Tag.EndsWith(subTag)).ToList();
+                     return dbContext.MarketSignalEvaluations.Where(x => x.Tag.Contains(marketSignalTag)).ToList();
                 }
             }
             catch (Exception ex)

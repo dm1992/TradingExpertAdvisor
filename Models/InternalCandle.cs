@@ -104,11 +104,11 @@ namespace TradingExpertAdvisor.Models
                 return GetDeltaPrice(); 
             } 
         }
-        public InternalCandleDirection DirectionType 
+        public string Tag 
         { 
             get 
-            { 
-                return GetDirectionType(); 
+            {
+                return CreateTag();
             } 
         }
 
@@ -132,36 +132,65 @@ namespace TradingExpertAdvisor.Models
                    $"---------------------------------------------------------------------------------------------------------------------------------------\n";
         }
 
-        private InternalCandleDirection GetDirectionType()
+        private string CreateTag()
         {
             decimal activeBuyVolumePercentage = this.GetActiveBuyVolumePercentage();
             decimal activeSellVolumePercentage = this.GetActiveSellVolumePercentage();
             decimal deltaPrice = this.GetDeltaPrice();
 
-            if (activeBuyVolumePercentage > activeSellVolumePercentage)
+            string tag = $"{this.Timeframe}";
+
+            if (activeBuyVolumePercentage >= 90.0m)
             {
-                if (deltaPrice > 0)
-                {
-                    return InternalCandleDirection.Expected_Up;
-                }
-                else if (deltaPrice < 0)
-                {
-                    return InternalCandleDirection.Not_Expected_Down;
-                }
+                tag += "_very_strong_ABV";
             }
-            else if (activeSellVolumePercentage > activeBuyVolumePercentage)
+            else if (activeBuyVolumePercentage >= 75.0m)
             {
-                if (deltaPrice < 0)
-                {
-                    return InternalCandleDirection.Expected_Down;
-                }
-                else if (deltaPrice > 0)
-                {
-                    return InternalCandleDirection.Not_Expected_Up;
-                }
+                tag += "_strong_ABV";
+            }
+            else if (activeBuyVolumePercentage >= 60.0m)
+            {
+                tag += "_moderate_ABV";
+            }
+            else if (activeBuyVolumePercentage > 50.0m)
+            {
+                tag += "_weak_ABV";
+            }
+            else if (activeSellVolumePercentage >= 90.0m)
+            {
+                tag += "_very_strong_ASV";
+            }
+            else if (activeSellVolumePercentage >= 75.0m)
+            {
+                tag += "_strong_ASV";
+            }
+            else if (activeSellVolumePercentage >= 60.0m)
+            {
+                tag += "_moderate_ASV";
+            }
+            else if (activeSellVolumePercentage > 50.0m)
+            {
+                tag += "_weak_ASV";
+            }
+            else
+            {
+                tag += "_neutral_ABV_ASV";
             }
 
-            return InternalCandleDirection.Unknown;
+            if (deltaPrice > 0)
+            {
+                tag += "_up_P";
+            }
+            else if (deltaPrice < 0)
+            {
+                tag += "_down_P";
+            }
+            else
+            {
+                tag += "_neutral_P";
+            }
+
+            return tag;
         }
 
 
